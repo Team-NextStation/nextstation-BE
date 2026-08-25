@@ -26,11 +26,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -45,16 +45,8 @@ public class RecommendationCommandService {
     private static final List<String> CATEGORY_DISPLAY_ORDER = List.of("CULTURE", "FOOD", "CAFE", "WALK");
 
     // 맞춤추천 점수 = 선택 태그별 장소 수 합 + (충족 태그 수 × TAG_MATCH_WEIGHT)
-    // 2026-08-03 실데이터(place_0730) 시뮬레이션 결과 10 이상이면 순위가 포화되어(더 올려도 결과 동일) 그대로 둔다.
     private static final int TAG_MATCH_WEIGHT = 10;
-    // 점수 상위 이 개수만 후보군으로 남긴다. 동점은 무작위로 섞는다.
-    // 기존 퍼센트 컷(최고점의 90%)은 가중치를 올리면 컷 폭도 같이 늘어나 후보군 크기가 가중치에 종속됐다.
-    // 개수 고정으로 바꿔 가중치·후보군 크기를 독립적으로 튜닝할 수 있게 했다(2026-08-03).
-    private static final int CANDIDATE_POOL_SIZE = 5;
-    // 가본 역 감점 점수. 안 가본 역을 하드 필터링하지 않고 점수만 깎아 후보군 진입 여부에만 영향을 준다.
-    // 실데이터 시뮬레이션 결과 TAG_MATCH_WEIGHT(10)에 근접한 값은 하드 제외와 다를 바 없어져(top-5 내 가본역 비율 1%대) 4로 정했다(2026-08-03).
-    // 단, top-5 안에 든 이후의 최종 무작위 선택은 점수와 무관하게 균등 랜덤이라, 감점은 "후보군 진입 여부"에만 영향을 주고
-    // 이미 진입한 역들 사이의 선택 확률에는 영향을 주지 않는다 — 도달 가능 역이 5개 이하면 감점이 사실상 무효화된다.
+    // 가본 역은 후보에서 제외하지 않고 점수만 깎아 순위에 반영한다.
     private static final int VISITED_PENALTY = 4;
 
     private final StationRepository stationRepository;
@@ -95,10 +87,12 @@ public class RecommendationCommandService {
     }
 
     /**
-     * 맞춤추천. 다음 순서로 역을 좁혀 그중 하나를 무작위로 고른다.
-     * 1. 출발역에서 이동 가능 시간 내 도달 가능한 뽑기 대상 역
-     * 2. 선택한 여행 스타일 태그 점수 상위 CANDIDATE_POOL_SIZE개 역(후보군) — 가본 역은 VISITED_PENALTY만큼 감점한 뒤 순위를 매긴다
-     * 3. 직전 추천 역 제외 — 제외하면 후보가 비면 이 단계는 건너뛴다
+     * 맞춤추천. 컷 없이 도달 가능한 역 전체를 순위 매겨 같은 추천 세션과 조건에서 아직 추천하지 않은 역을 순서대로 내려준다.
+     * 1. 출발역에서 이동 가능 시간 내 도달 가능한 뽑기 대상 역 전체를 후보로 삼는다(컷 없음).
+     * 2. 선택한 여행 스타일 태그 점수(가본 역은 VISITED_PENALTY만큼 감점) 내림차순, 동점은 역명 가나다순으로 전체를 정렬한다.
+     * 3. 추천 세션과 선택 조건이 같은 이력에서 아직 추천하지 않은 역 중 최상위 1개를 준다.
+     * 4. 전부 추천했으면 순위를 버리고 현재 후보 중 직전 추천 1건만 제외한 균등 랜덤으로 전환한다.
+     * 5. 비로그인도 같은 세션 순환을 적용하되 가본 역 감점만 생략한다.
      */
     public CustomRecommendationResponse recommendCustom(Long memberId, CustomRecommendationRequest request) {
         validateDepartureStation(request.departureStationId());
@@ -115,11 +109,11 @@ public class RecommendationCommandService {
             throw new CustomException(RecommendationErrorCode.NO_REACHABLE_STATION);
         }
 
-        Set<Long> visitedStationIds = Set.copyOf(courseRepository.findVisitedStationIds(memberId));
-        List<Station> scoreCandidates = selectScoreCandidates(reachableStations, request.travelStyles(), visitedStationIds);
-        List<Station> finalCandidates = excludeLastRecommended(scoreCandidates, memberId);
-
-        Station picked = pickRandom(finalCandidates);
+        Set<Long> visitedStationIds = memberId == null
+                ? Set.of()
+                : Set.copyOf(courseRepository.findVisitedStationIds(memberId));
+        List<Station> rankedStations = rankStations(reachableStations, request.travelStyles(), visitedStationIds);
+        Station picked = pickNextCustomStation(rankedStations, reachableStations, request);
         recordCustomLog(memberId, picked.getId(), request);
         log.info("맞춤추천 완료 - memberId: {}, 출발역: {}, 이동시간: {}, 스타일: {}, 추천역: {}",
                 memberId, request.departureStationId(), request.travelTime(), request.travelStyles(), picked.getId());
@@ -147,17 +141,50 @@ public class RecommendationCommandService {
         return durationByStationId;
     }
 
-    // 점수 상위 CANDIDATE_POOL_SIZE개 역만 후보군으로 남긴다. 가본 역은 감점 후 순위를 매기고, 동점 역은 무작위로 섞어 매번 다르게 채운다.
-    private List<Station> selectScoreCandidates(List<Station> stations, List<String> travelStyles, Set<Long> visitedStationIds) {
+    // 도달 가능한 역 전체를 점수 내림차순으로 정렬한다(컷 없음). 가본 역은 감점 후 순위를 매기고, 동점은 역명 가나다순으로 고정한다.
+    private List<Station> rankStations(List<Station> stations, List<String> travelStyles, Set<Long> visitedStationIds) {
         Map<Long, Map<String, Long>> countsByStationId = stationTagCountReader.getPlaceCountsByStationForTags(travelStyles);
 
-        List<Station> shuffled = new ArrayList<>(stations);
-        Collections.shuffle(shuffled, ThreadLocalRandom.current());
-        return shuffled.stream()
-                .sorted(Comparator.comparingLong(
-                        (Station station) -> calculateScore(station, countsByStationId, travelStyles, visitedStationIds)).reversed())
-                .limit(CANDIDATE_POOL_SIZE)
+        return stations.stream()
+                .sorted(Comparator
+                        .comparingLong((Station station) -> calculateScore(station, countsByStationId, travelStyles, visitedStationIds))
+                        .reversed()
+                        .thenComparing(Station::getStationName)
+                        .thenComparing(Station::getId))
                 .toList();
+    }
+
+    // 같은 세션과 조건에서 아직 추천하지 않은 역을 순위대로 준다.
+    // 전부 추천했으면 직전 추천 1건만 제외한 균등 랜덤으로 전환한다.
+    private Station pickNextCustomStation(List<Station> rankedStations, List<Station> reachableStations,
+                                          CustomRecommendationRequest request) {
+        String travelStyles = RecommendationLog.canonicalizeTravelStyles(request.travelStyles());
+        Set<Long> recommendedStationIds = Set.copyOf(recommendationLogRepository.findCustomRecommendedStationIds(
+                request.recommendationSessionId(), request.departureStationId(), request.travelTime(), travelStyles));
+        Optional<Station> next = rankedStations.stream()
+                .filter(station -> !recommendedStationIds.contains(station.getId()))
+                .findFirst();
+        if (next.isPresent()) {
+            return next.get();
+        }
+        return pickRandom(excludeLastCustomRecommended(reachableStations, request, travelStyles));
+    }
+
+    private List<Station> excludeLastCustomRecommended(List<Station> stations, CustomRecommendationRequest request,
+                                                       String travelStyles) {
+        Long lastStationId = recommendationLogRepository
+                .findTopByRecommendationSessionIdAndIsRandomFalseAndDepartureStationIdAndTravelTimeAndTravelStylesOrderByCreatedAtDescIdDesc(
+                        request.recommendationSessionId(), request.departureStationId(), request.travelTime(), travelStyles)
+                .map(RecommendationLog::getResultStationId)
+                .orElse(null);
+        if (lastStationId == null) {
+            return stations;
+        }
+
+        List<Station> filtered = stations.stream()
+                .filter(station -> !station.getId().equals(lastStationId))
+                .toList();
+        return filtered.isEmpty() ? stations : filtered;
     }
 
     private long calculateScore(Station station, Map<Long, Map<String, Long>> countsByStationId, List<String> travelStyles,
@@ -188,16 +215,17 @@ public class RecommendationCommandService {
         if (drawables.isEmpty()) {
             throw new CustomException(RecommendationErrorCode.NO_DRAWABLE_STATION);
         }
-        return pickRandom(excludeLastRecommended(drawables, memberId));
+        return pickRandom(excludeLastRecommended(drawables, memberId, true));
     }
 
     // 로그인 사용자의 직전 추천 1건을 후보에서 제외한다. 제외 후 비면 전체에서 다시 뽑는다.
-    private List<Station> excludeLastRecommended(List<Station> stations, Long memberId) {
+    // 랜덤뽑기(isRandom=true)와 맞춤추천(isRandom=false)은 서로 다른 화면이라 직전 추천도 각자 독립적으로 조회한다.
+    private List<Station> excludeLastRecommended(List<Station> stations, Long memberId, boolean isRandom) {
         if (memberId == null) {
             return stations;
         }
 
-        Long lastStationId = recommendationLogRepository.findTopByMemberIdOrderByCreatedAtDescIdDesc(memberId)
+        Long lastStationId = recommendationLogRepository.findTopByMemberIdAndIsRandomOrderByCreatedAtDescIdDesc(memberId, isRandom)
                 .map(RecommendationLog::getResultStationId)
                 .orElse(null);
         if (lastStationId == null) {
@@ -232,6 +260,7 @@ public class RecommendationCommandService {
                         .memberId(memberId)
                         .resultStationId(stationId)
                         .isRandom(false)
+                        .recommendationSessionId(request.recommendationSessionId())
                         .departureStationId(request.departureStationId())
                         .travelTime(request.travelTime())
                         .travelStyles(request.travelStyles())

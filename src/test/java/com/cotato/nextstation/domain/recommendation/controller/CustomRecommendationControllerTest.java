@@ -41,6 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(GlobalExceptionHandler.class)
 class CustomRecommendationControllerTest {
 
+    private static final String SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+
     private static final String TOKEN = "access-token";
 
     @Autowired
@@ -63,7 +65,8 @@ class CustomRecommendationControllerTest {
     }
 
     private CustomRecommendationRequest request() {
-        return new CustomRecommendationRequest(1L, TravelTime.THIRTY_MINUTES, List.of("NATURE", "BUDGET", "EXPERIENCE"));
+        return new CustomRecommendationRequest(SESSION_ID, 1L, TravelTime.THIRTY_MINUTES,
+                List.of("NATURE", "BUDGET", "EXPERIENCE"));
     }
 
     private CustomRecommendationResponse sampleResponse() {
@@ -100,10 +103,38 @@ class CustomRecommendationControllerTest {
     }
 
     @Test
+    @DisplayName("추천 세션 ID가 없으면 400을 반환한다")
+    void recommendCustom_missingSessionId() throws Exception {
+        CustomRecommendationRequest invalid = new CustomRecommendationRequest(
+                null, 1L, TravelTime.ANY, List.of("NATURE"));
+
+        mockMvc.perform(post("/api/v1/recommendations/custom")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CLIENT_ERROR_400_VALIDATION_ERROR"));
+        verify(recommendationCommandService, never()).recommendCustom(any(), any());
+    }
+
+    @Test
+    @DisplayName("추천 세션 ID가 UUID 형식이 아니면 400을 반환한다")
+    void recommendCustom_invalidSessionId() throws Exception {
+        CustomRecommendationRequest invalid = new CustomRecommendationRequest(
+                "not-a-uuid", 1L, TravelTime.ANY, List.of("NATURE"));
+
+        mockMvc.perform(post("/api/v1/recommendations/custom")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CLIENT_ERROR_400_VALIDATION_ERROR"));
+        verify(recommendationCommandService, never()).recommendCustom(any(), any());
+    }
+
+    @Test
     @DisplayName("여행 스타일이 4개 이상이면 400을 반환한다")
     void recommendCustom_tooManyTravelStyles() throws Exception {
         CustomRecommendationRequest invalid = new CustomRecommendationRequest(
-                1L, TravelTime.ANY, List.of("NATURE", "BUDGET", "EXPERIENCE", "INDOOR"));
+                SESSION_ID, 1L, TravelTime.ANY, List.of("NATURE", "BUDGET", "EXPERIENCE", "INDOOR"));
 
         mockMvc.perform(post("/api/v1/recommendations/custom")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -117,7 +148,7 @@ class CustomRecommendationControllerTest {
     @DisplayName("여행 스타일이 비어 있으면 400을 반환한다")
     void recommendCustom_emptyTravelStyles() throws Exception {
         CustomRecommendationRequest invalid = new CustomRecommendationRequest(
-                1L, TravelTime.ANY, List.of());
+                SESSION_ID, 1L, TravelTime.ANY, List.of());
 
         mockMvc.perform(post("/api/v1/recommendations/custom")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -131,7 +162,7 @@ class CustomRecommendationControllerTest {
     @DisplayName("여행 스타일이 중복되면 400을 반환하고 서비스를 호출하지 않는다")
     void recommendCustom_duplicateTravelStyles() throws Exception {
         CustomRecommendationRequest invalid = new CustomRecommendationRequest(
-                1L, TravelTime.ANY, List.of("NATURE", "NATURE", "BUDGET"));
+                SESSION_ID, 1L, TravelTime.ANY, List.of("NATURE", "NATURE", "BUDGET"));
 
         mockMvc.perform(post("/api/v1/recommendations/custom")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -147,7 +178,7 @@ class CustomRecommendationControllerTest {
     @DisplayName("존재하지 않는 여행 스타일이면 400을 반환하고 서비스를 호출하지 않는다")
     void recommendCustom_invalidTravelStyle() throws Exception {
         CustomRecommendationRequest invalid = new CustomRecommendationRequest(
-                1L, TravelTime.ANY, List.of("NATURE", "BUDGET", "NOT_A_TAG"));
+                SESSION_ID, 1L, TravelTime.ANY, List.of("NATURE", "BUDGET", "NOT_A_TAG"));
 
         mockMvc.perform(post("/api/v1/recommendations/custom")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -162,7 +193,8 @@ class CustomRecommendationControllerTest {
     @Test
     @DisplayName("여행 스타일이 1~2개여도 정상 추천된다")
     void recommendCustom_allowsFewerThanThreeTravelStyles() throws Exception {
-        CustomRecommendationRequest oneStyle = new CustomRecommendationRequest(1L, TravelTime.ANY, List.of("NATURE"));
+        CustomRecommendationRequest oneStyle = new CustomRecommendationRequest(
+                SESSION_ID, 1L, TravelTime.ANY, List.of("NATURE"));
         given(recommendationCommandService.recommendCustom(eq(1L), any())).willReturn(sampleResponse());
 
         mockMvc.perform(post("/api/v1/recommendations/custom")
