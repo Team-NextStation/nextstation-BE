@@ -9,7 +9,6 @@
 
 직접 코스를 만들고, 추천 코스를 둘러보고, 다녀온 여행을 기록하며 나만의 도시 여행을 쌓아갈 수 있습니다.
 
-<br>
 
 ## 팀원
 
@@ -33,7 +32,7 @@
 ## 로컬 개발환경 실행
 
 ### 사전 요구사항
-* `Docker` / `Docker Compose`
+* `Docker`, `Docker Compose`
 
 ### 실행 및 종료
 
@@ -45,3 +44,10 @@ docker compose -f docker-compose-local.yml up -d
 
 # 로컬 컨테이너 환경 종료
 docker compose -f docker-compose-local.yml down
+```
+
+## 배포 주소
+🔗 [nextstation.kr](www.nextstation.kr)
+
+## Contact
+📧 [Gmail](mailto:team.nextstation@gmail.com)
