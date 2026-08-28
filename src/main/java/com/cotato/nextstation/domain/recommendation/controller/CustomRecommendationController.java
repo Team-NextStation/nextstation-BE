@@ -43,7 +43,7 @@ public class CustomRecommendationController {
     @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "추천 성공"),
-            @ApiResponse(responseCode = "400", description = "요청 값 검증 실패 — 여행 스타일이 1~3개가 아니거나, 존재하지 않거나, 중복됨 (`GlobalErrorCode.VALIDATION_ERROR`)"),
+            @ApiResponse(responseCode = "400", description = "요청 값 검증 실패 — 추천 세션 ID 누락·UUID 형식 오류, 필수 조건 누락, 여행 스타일 개수·존재 여부·중복 오류 (`GlobalErrorCode.VALIDATION_ERROR`)"),
             @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
             @ApiResponse(responseCode = "404", description = "존재하지 않는 출발역 또는 조건에 맞게 갈 수 있는 역이 없음 (`RecommendationErrorCode.DEPARTURE_STATION_NOT_FOUND`, `NO_REACHABLE_STATION`)"),
     })
