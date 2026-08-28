@@ -13,27 +13,31 @@ import java.util.Optional;
 
 public interface RecommendationLogRepository extends JpaRepository<RecommendationLog, Long> {
 
-    // 같은 추천 세션에서 랜덤추천으로 제공한 역 ID 전체를 조회한다.
+    // 유효시간 안에서 같은 추천 세션으로 제공한 랜덤추천 역 ID를 조회한다.
     @Query("SELECT DISTINCT rl.resultStationId FROM RecommendationLog rl " +
-            "WHERE rl.recommendationSessionId = :sessionId AND rl.isRandom = true")
-    List<Long> findRandomRecommendedStationIds(@Param("sessionId") String sessionId);
+            "WHERE rl.recommendationSessionId = :sessionId AND rl.isRandom = true " +
+            "AND rl.createdAt >= :activeSince")
+    List<Long> findRandomRecommendedStationIds(@Param("sessionId") String sessionId,
+                                               @Param("activeSince") LocalDateTime activeSince);
 
-    // 같은 추천 세션의 직전 랜덤추천 1건을 조회한다. created_at 동점은 id로 결정한다.
-    Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomTrueOrderByCreatedAtDescIdDesc(
-            String recommendationSessionId);
+    // 유효시간 안에서 같은 추천 세션의 직전 랜덤추천 1건을 조회한다. created_at 동점은 id로 결정한다.
+    Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomTrueAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(
+            String recommendationSessionId, LocalDateTime activeSince);
 
-    // 같은 추천 세션과 선택 조건에서 이미 제공한 역을 조회한다.
+    // 유효시간 안에서 같은 추천 세션과 선택 조건으로 이미 제공한 역을 조회한다.
     @Query("SELECT DISTINCT rl.resultStationId FROM RecommendationLog rl " +
             "WHERE rl.recommendationSessionId = :sessionId AND rl.isRandom = false " +
             "AND rl.departureStationId = :departureStationId AND rl.travelTime = :travelTime " +
-            "AND rl.travelStyles = :travelStyles")
+            "AND rl.travelStyles = :travelStyles AND rl.createdAt >= :activeSince")
     List<Long> findCustomRecommendedStationIds(@Param("sessionId") String sessionId,
                                                @Param("departureStationId") Long departureStationId,
                                                @Param("travelTime") TravelTime travelTime,
-                                               @Param("travelStyles") String travelStyles);
+                                               @Param("travelStyles") String travelStyles,
+                                               @Param("activeSince") LocalDateTime activeSince);
 
-    Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomFalseAndDepartureStationIdAndTravelTimeAndTravelStylesOrderByCreatedAtDescIdDesc(
-            String recommendationSessionId, Long departureStationId, TravelTime travelTime, String travelStyles);
+    Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomFalseAndDepartureStationIdAndTravelTimeAndTravelStylesAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(
+            String recommendationSessionId, Long departureStationId, TravelTime travelTime, String travelStyles,
+            LocalDateTime activeSince);
 
     // 리포트 집계 구간은 모두 [from, to), 일간·주간 리포트가 같은 건을 중복 집계하지 않도록 끝을 배제한다.
     @Query("SELECT COUNT(l) FROM RecommendationLog l "
