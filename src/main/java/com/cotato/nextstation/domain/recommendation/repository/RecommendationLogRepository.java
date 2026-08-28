@@ -13,7 +13,12 @@ public interface RecommendationLogRepository extends JpaRepository<Recommendatio
 
     // 랜덤뽑기의 직전 추천 1건. 로그인 사용자에게만 조회한다.
     // created_at이 같은 순간에 겹칠 때를 대비해 id로 tie-break 한다.
-    Optional<RecommendationLog> findTopByMemberIdAndIsRandomOrderByCreatedAtDescIdDesc(Long memberId, boolean isRandom);
+    @Query("SELECT DISTINCT rl.resultStationId FROM RecommendationLog rl " +
+            "WHERE rl.recommendationSessionId = :sessionId AND rl.isRandom = true")
+    List<Long> findRandomRecommendedStationIds(@Param("sessionId") String sessionId);
+
+    Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomTrueOrderByCreatedAtDescIdDesc(
+            String recommendationSessionId);
 
     // 같은 추천 세션과 선택 조건에서 이미 제공한 역을 조회한다.
     @Query("SELECT DISTINCT rl.resultStationId FROM RecommendationLog rl " +

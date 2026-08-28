@@ -3,6 +3,7 @@ package com.cotato.nextstation.domain.recommendation.service.command;
 import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.recommendation.converter.RecommendationConverter;
 import com.cotato.nextstation.domain.recommendation.dto.request.CustomRecommendationRequest;
+import com.cotato.nextstation.domain.recommendation.dto.request.RandomRecommendationRequest;
 import com.cotato.nextstation.domain.recommendation.dto.response.CoursePreviewResponse;
 import com.cotato.nextstation.domain.recommendation.dto.response.CustomRecommendationResponse;
 import com.cotato.nextstation.domain.recommendation.dto.response.RandomRecommendationResponse;
@@ -41,7 +42,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
@@ -51,6 +51,8 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class RecommendationCommandServiceTest {
+
+    private static final String RANDOM_SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
     @Mock
     private StationRepository stationRepository;
@@ -84,6 +86,7 @@ class RecommendationCommandServiceTest {
                 recommendationLogRepository, stationPlaceReader, stationTagCountReader, recommendationConverter);
         lenient().when(stationLineRepository.findLinesByStationIdIn(any())).thenReturn(List.of());
         lenient().when(courseRepository.findVisitedStationIds(any())).thenReturn(List.of());
+        lenient().when(recommendationLogRepository.findRandomRecommendedStationIds(any())).thenReturn(List.of());
     }
 
     private Station station(Long id, String name) {
@@ -118,12 +121,11 @@ class RecommendationCommandServiceTest {
         // given
         Long memberId = 1L;
         given(stationRepository.findByIsDrawableTrue()).willReturn(List.of(station(1L, "A역"), station(2L, "B역")));
-        given(recommendationLogRepository.findTopByMemberIdAndIsRandomOrderByCreatedAtDescIdDesc(memberId, true))
-                .willReturn(Optional.of(RecommendationLog.builder().memberId(memberId).resultStationId(1L).isRandom(true).build()));
+        given(recommendationLogRepository.findRandomRecommendedStationIds(RANDOM_SESSION_ID)).willReturn(List.of(1L));
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(memberId);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(memberId, randomRequest());
 
         // then
         assertThat(response.station().stationId()).isEqualTo(2L);
@@ -132,6 +134,7 @@ class RecommendationCommandServiceTest {
         assertThat(captor.getValue().getResultStationId()).isEqualTo(2L);
         assertThat(captor.getValue().getMemberId()).isEqualTo(memberId);
         assertThat(captor.getValue().isRandom()).isTrue();
+        assertThat(captor.getValue().getRecommendationSessionId()).isEqualTo(RANDOM_SESSION_ID);
         assertThat(captor.getValue().getDepartureStationId()).isNull();
         assertThat(captor.getValue().getTravelStyles()).isNull();
     }
@@ -142,12 +145,13 @@ class RecommendationCommandServiceTest {
         // given
         Long memberId = 1L;
         given(stationRepository.findByIsDrawableTrue()).willReturn(List.of(station(1L, "A역")));
-        given(recommendationLogRepository.findTopByMemberIdAndIsRandomOrderByCreatedAtDescIdDesc(memberId, true))
+        given(recommendationLogRepository.findRandomRecommendedStationIds(RANDOM_SESSION_ID)).willReturn(List.of(1L));
+        given(recommendationLogRepository.findTopByRecommendationSessionIdAndIsRandomTrueOrderByCreatedAtDescIdDesc(RANDOM_SESSION_ID))
                 .willReturn(Optional.of(RecommendationLog.builder().memberId(memberId).resultStationId(1L).isRandom(true).build()));
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(memberId);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(memberId, randomRequest());
 
         // then
         assertThat(response.station().stationId()).isEqualTo(1L);
@@ -161,11 +165,11 @@ class RecommendationCommandServiceTest {
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null, randomRequest());
 
         // then
         assertThat(response.station().stationId()).isEqualTo(1L);
-        verify(recommendationLogRepository, never()).findTopByMemberIdAndIsRandomOrderByCreatedAtDescIdDesc(any(), anyBoolean());
+        verify(recommendationLogRepository).findRandomRecommendedStationIds(RANDOM_SESSION_ID);
         ArgumentCaptor<RecommendationLog> captor = ArgumentCaptor.forClass(RecommendationLog.class);
         verify(recommendationLogRepository).save(captor.capture());
         assertThat(captor.getValue().getMemberId()).isNull();
@@ -178,7 +182,7 @@ class RecommendationCommandServiceTest {
         given(stationRepository.findByIsDrawableTrue()).willReturn(List.of());
 
         // when & then
-        assertThatThrownBy(() -> recommendationCommandService.drawRandom(null))
+        assertThatThrownBy(() -> recommendationCommandService.drawRandom(null, randomRequest()))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(RecommendationErrorCode.NO_DRAWABLE_STATION.getMessage());
         verify(recommendationLogRepository, never()).save(any());
@@ -199,7 +203,7 @@ class RecommendationCommandServiceTest {
         ));
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null, randomRequest());
 
         // then
         assertThat(response.station().description()).isEqualTo("제기동역 소개");
@@ -225,7 +229,7 @@ class RecommendationCommandServiceTest {
         // when: 30번 뽑아 선택된 장소 id를 모은다
         java.util.Set<Long> pickedIds = new java.util.HashSet<>();
         for (int i = 0; i < 30; i++) {
-            pickedIds.add(recommendationCommandService.drawRandom(null)
+            pickedIds.add(recommendationCommandService.drawRandom(null, randomRequest())
                     .course().places().get(0).placeId());
         }
 
@@ -248,7 +252,7 @@ class RecommendationCommandServiceTest {
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null, randomRequest());
 
         // then
         assertThat(response.station().lines())
@@ -270,7 +274,7 @@ class RecommendationCommandServiceTest {
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null, randomRequest());
 
         // then
         assertThat(response.station().lines())
@@ -288,7 +292,7 @@ class RecommendationCommandServiceTest {
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null, randomRequest());
 
         // then: 빈 줄은 버리고 "1. " 같은 번호는 떼어낸다
         assertThat(response.station().todos()).containsExactly(
@@ -307,7 +311,7 @@ class RecommendationCommandServiceTest {
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());
 
         // when
-        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null);
+        RandomRecommendationResponse response = recommendationCommandService.drawRandom(null, randomRequest());
 
         // then
         assertThat(response.station().todos()).isEmpty();
@@ -386,6 +390,10 @@ class RecommendationCommandServiceTest {
 
     private CustomRecommendationRequest customRequest(Long departureStationId, TravelTime travelTime, List<String> travelStyles) {
         return customRequest(SESSION_ID, departureStationId, travelTime, travelStyles);
+    }
+
+    private RandomRecommendationRequest randomRequest() {
+        return new RandomRecommendationRequest(RANDOM_SESSION_ID);
     }
 
     private CustomRecommendationRequest customRequest(String sessionId, Long departureStationId,

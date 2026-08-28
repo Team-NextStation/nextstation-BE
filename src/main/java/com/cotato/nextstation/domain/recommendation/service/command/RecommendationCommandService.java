@@ -3,6 +3,7 @@ package com.cotato.nextstation.domain.recommendation.service.command;
 import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.recommendation.converter.RecommendationConverter;
 import com.cotato.nextstation.domain.recommendation.dto.request.CustomRecommendationRequest;
+import com.cotato.nextstation.domain.recommendation.dto.request.RandomRecommendationRequest;
 import com.cotato.nextstation.domain.recommendation.dto.response.CoursePreviewResponse;
 import com.cotato.nextstation.domain.recommendation.dto.response.CustomRecommendationResponse;
 import com.cotato.nextstation.domain.recommendation.dto.response.RandomRecommendationResponse;
@@ -59,9 +60,9 @@ public class RecommendationCommandService {
     private final RecommendationConverter recommendationConverter;
 
     // 랜덤뽑기. memberId가 있으면 직전 추천 1건을 제외한다.
-    public RandomRecommendationResponse drawRandom(Long memberId) {
-        Station picked = pickDrawableStation(memberId);
-        recordLog(memberId, picked.getId(), true);
+    public RandomRecommendationResponse drawRandom(Long memberId, RandomRecommendationRequest request) {
+        Station picked = pickDrawableStation(request.recommendationSessionId());
+        recordRandomLog(memberId, picked.getId(), request.recommendationSessionId());
 
         // 환승역이면 결과 화면에 소속 노선을 모두 칩으로 노출하므로 대표 노선만이 아니라 전체를 조회한다.
         List<StationLineView> lines = stationLineRepository.findLinesByStationIdIn(List.of(picked.getId()));
@@ -210,22 +211,27 @@ public class RecommendationCommandService {
         return placeCountSum + (long) matchedTagCount * TAG_MATCH_WEIGHT;
     }
 
-    private Station pickDrawableStation(Long memberId) {
+    private Station pickDrawableStation(String recommendationSessionId) {
         List<Station> drawables = stationRepository.findByIsDrawableTrue();
         if (drawables.isEmpty()) {
             throw new CustomException(RecommendationErrorCode.NO_DRAWABLE_STATION);
         }
-        return pickRandom(excludeLastRecommended(drawables, memberId, true));
+        Set<Long> recommendedStationIds = Set.copyOf(
+                recommendationLogRepository.findRandomRecommendedStationIds(recommendationSessionId));
+        List<Station> remaining = drawables.stream()
+                .filter(station -> !recommendedStationIds.contains(station.getId()))
+                .toList();
+        if (!remaining.isEmpty()) {
+            return pickRandom(remaining);
+        }
+        return pickRandom(excludeLastRandomRecommended(drawables, recommendationSessionId));
     }
 
     // 로그인 사용자의 직전 추천 1건을 후보에서 제외한다. 제외 후 비면 전체에서 다시 뽑는다.
     // 랜덤뽑기(isRandom=true)와 맞춤추천(isRandom=false)은 서로 다른 화면이라 직전 추천도 각자 독립적으로 조회한다.
-    private List<Station> excludeLastRecommended(List<Station> stations, Long memberId, boolean isRandom) {
-        if (memberId == null) {
-            return stations;
-        }
-
-        Long lastStationId = recommendationLogRepository.findTopByMemberIdAndIsRandomOrderByCreatedAtDescIdDesc(memberId, isRandom)
+    private List<Station> excludeLastRandomRecommended(List<Station> stations, String recommendationSessionId) {
+        Long lastStationId = recommendationLogRepository
+                .findTopByRecommendationSessionIdAndIsRandomTrueOrderByCreatedAtDescIdDesc(recommendationSessionId)
                 .map(RecommendationLog::getResultStationId)
                 .orElse(null);
         if (lastStationId == null) {
@@ -243,12 +249,13 @@ public class RecommendationCommandService {
     }
 
     // 랜덤뽑기는 선택 조건이 없어 결과 역만 남긴다.
-    private void recordLog(Long memberId, Long stationId, boolean isRandom) {
+    private void recordRandomLog(Long memberId, Long stationId, String recommendationSessionId) {
         recommendationLogRepository.save(
                 RecommendationLog.builder()
                         .memberId(memberId)
                         .resultStationId(stationId)
-                        .isRandom(isRandom)
+                        .isRandom(true)
+                        .recommendationSessionId(recommendationSessionId)
                         .build()
         );
     }

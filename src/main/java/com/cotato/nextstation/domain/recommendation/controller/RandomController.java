@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.recommendation.controller;
 
+import com.cotato.nextstation.domain.recommendation.dto.request.RandomRecommendationRequest;
 import com.cotato.nextstation.domain.recommendation.dto.response.CoursePreviewResponse;
 import com.cotato.nextstation.domain.recommendation.dto.response.RandomRecommendationResponse;
 import com.cotato.nextstation.domain.recommendation.service.command.RecommendationCommandService;
@@ -11,9 +12,11 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,46 +31,47 @@ public class RandomController {
             summary = "랜덤뽑기",
             description = """
                     뽑기 대상 역 중 무작위로 1개를 뽑아 역 정보와 코스 미리보기를 반환한다.
-                    - 로그인 시 직전 추천 1건을 제외한다. 제외 후 후보가 없으면 전체에서 다시 뽑는다.
-                    - 환승역이면 소속 노선을 모두 반환하며, 대표 노선이 목록 맨 앞에 온다.
-                    - 코스 미리보기는 카테고리별 장소 1개씩으로 구성되며, 장소가 없는 카테고리는 제외된다.
-                    - 코스 미리보기는 저장되지 않는다. 저장은 코스 저장 API에서만 일어난다.
+                    - 같은 추천 세션에서는 이미 보여준 역을 제외하고 무작위로 추천한다.
+                    - 결과 화면에서 다시 뽑을 때는 같은 recommendationSessionId를 사용한다.
+                    - 새 결과 화면에 진입할 때는 새로운 UUID를 사용한다.
+                    - 해당 세션에서 모든 역을 추천하면 직전 추천역만 제외하고 무작위로 추천한다.
+                    - 환승역이면 소속 노선을 모두 반환한다.
+                    - 코스 미리보기는 카테고리별 장소 1개씩으로 구성하며 장소가 없는 카테고리는 제외한다.
 
-                    accessToken은 **선택**이다. 없으면 비로그인 뽑기로 동작하고,
-                    보냈는데 만료·위조면 401이다.
+                    accessToken은 선택이다. 비로그인도 세션별 중복 방지를 적용한다.
+                    보냈는데 만료·위조된 토큰이면 401이다.
                     """
     )
     @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "뽑기 성공"),
-            @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
+            @ApiResponse(responseCode = "400", description = "추천 세션 ID 누락 또는 UUID 형식 오류"),
+            @ApiResponse(responseCode = "401", description = "accessToken 위변조 또는 만료"),
             @ApiResponse(responseCode = "404", description = "뽑기 대상 역이 없음"),
     })
     @PostMapping
     public CommonResponse<RandomRecommendationResponse> drawRandom(
-            // 비로그인도 뽑을 수 있어야 해서 required = false다. 로그인 시에만 직전 추천을 제외한다.
-            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal) {
+            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal,
+            @Valid @RequestBody RandomRecommendationRequest request) {
         Long memberId = (principal != null) ? principal.memberId() : null;
-        return CommonResponse.success(recommendationCommandService.drawRandom(memberId));
+        return CommonResponse.success(recommendationCommandService.drawRandom(memberId, request));
     }
 
     @Operation(
             summary = "코스만 다시 뽑기",
             description = """
-                    역은 그대로 두고 코스 미리보기만 다시 무작위로 뽑는다. 랜덤뽑기 결과 화면에서 "다시 뽑기"를 눌렀을 때 쓴다.
-                    - 직전 결과와 관계없이 완전 무작위다.
-                    - 카테고리별 장소 1개씩으로 구성되며, 장소가 없는 카테고리는 제외된다.
-                    - 코스 미리보기는 저장되지 않는다. 저장은 코스 저장 API에서만 일어난다.
-                    - 역을 새로 추천한 것이 아니므로 recommendation_log에 기록되지 않는다.
+                    역은 그대로 두고 코스 미리보기만 다시 무작위로 뽑는다.
+                    - 카테고리별 장소 1개씩으로 구성하며 장소가 없는 카테고리는 제외한다.
+                    - 새로운 역 추천이 아니므로 recommendation_log에는 기록하지 않는다.
                     """
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "다시 뽑기 성공"),
-            @ApiResponse(responseCode = "404", description = "존재하지 않는 역 (`StationErrorCode.STATION_NOT_FOUND`)"),
+            @ApiResponse(responseCode = "404", description = "존재하지 않는 역"),
     })
     @PostMapping("/{stationId}/course")
     public CommonResponse<CoursePreviewResponse> redrawCourse(
-            @Parameter(description = "코스를 다시 뽑을 역 ID (직전 뽑기 결과의 역)", example = "10")
+            @Parameter(description = "코스를 다시 뽑을 역 ID", example = "10")
             @PathVariable Long stationId) {
         return CommonResponse.success(recommendationCommandService.redrawCourse(stationId));
     }
