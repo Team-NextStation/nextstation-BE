@@ -90,7 +90,7 @@ public class RecommendationCommandService {
     /**
      * 맞춤추천. 컷 없이 도달 가능한 역 전체를 순위 매겨 같은 추천 세션과 조건에서 아직 추천하지 않은 역을 순서대로 내려준다.
      * 1. 출발역에서 이동 가능 시간 내 도달 가능한 뽑기 대상 역 전체를 후보로 삼는다(컷 없음).
-     * 2. 선택한 여행 스타일 태그 점수(가본 역은 VISITED_PENALTY만큼 감점) 내림차순, 동점은 역명 가나다순으로 전체를 정렬한다.
+     * 2. 선택한 여행 스타일 태그 점수(가본 역은 VISITED_PENALTY만큼 감점) 내림차순, 동점은 역 ID 오름차순으로 전체를 정렬한다.
      * 3. 추천 세션과 선택 조건이 같은 이력에서 아직 추천하지 않은 역 중 최상위 1개를 준다.
      * 4. 전부 추천했으면 순위를 버리고 현재 후보 중 직전 추천 1건만 제외한 균등 랜덤으로 전환한다.
      * 5. 비로그인도 같은 세션 순환을 적용하되 가본 역 감점만 생략한다.
@@ -142,7 +142,7 @@ public class RecommendationCommandService {
         return durationByStationId;
     }
 
-    // 도달 가능한 역 전체를 점수 내림차순으로 정렬한다(컷 없음). 가본 역은 감점 후 순위를 매기고, 동점은 역명 가나다순으로 고정한다.
+    // 도달 가능한 역 전체를 점수 내림차순으로 정렬한다(컷 없음). 가본 역은 감점 후 순위를 매기고, 동점은 역 ID 오름차순으로 고정한다.
     private List<Station> rankStations(List<Station> stations, List<String> travelStyles, Set<Long> visitedStationIds) {
         Map<Long, Map<String, Long>> countsByStationId = stationTagCountReader.getPlaceCountsByStationForTags(travelStyles);
 
@@ -150,7 +150,6 @@ public class RecommendationCommandService {
                 .sorted(Comparator
                         .comparingLong((Station station) -> calculateScore(station, countsByStationId, travelStyles, visitedStationIds))
                         .reversed()
-                        .thenComparing(Station::getStationName)
                         .thenComparing(Station::getId))
                 .toList();
     }

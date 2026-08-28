@@ -506,9 +506,9 @@ class RecommendationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("점수가 동점이면 역명 가나다순으로 앞선 역이 추천된다")
-    void recommendCustom_tiesBrokenByStationNameAscending() {
-        // given: 세 역 모두 태그 매칭 점수가 0으로 동점이다. 역명은 가나다순으로 "가역"이 가장 앞선다.
+    @DisplayName("점수가 동점이면 역 ID가 작은 역이 추천된다")
+    void recommendCustom_tiesBrokenByStationIdAscending() {
+        // given: 세 역 모두 태그 매칭 점수가 0으로 동점이다.
         givenDeparture(1L);
         List<ReachableStationView> routes = java.util.stream.LongStream.rangeClosed(1, 3)
                 .mapToObj(id -> reachableView(id, 10))
@@ -524,7 +524,7 @@ class RecommendationCommandServiceTest {
                 customRequest(1L, TravelTime.ANY, TRAVEL_STYLES));
 
         // then
-        assertThat(response.station().stationId()).isEqualTo(3L);
+        assertThat(response.station().stationId()).isEqualTo(1L);
     }
 
     @Test

@@ -34,7 +34,6 @@ public interface RecommendationLogRepository extends JpaRepository<Recommendatio
 
     Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomFalseAndDepartureStationIdAndTravelTimeAndTravelStylesOrderByCreatedAtDescIdDesc(
             String recommendationSessionId, Long departureStationId, TravelTime travelTime, String travelStyles);
-    Optional<RecommendationLog> findTopByMemberIdOrderByCreatedAtDescIdDesc(Long memberId);
 
     // 리포트 집계 구간은 모두 [from, to), 일간·주간 리포트가 같은 건을 중복 집계하지 않도록 끝을 배제한다.
     @Query("SELECT COUNT(l) FROM RecommendationLog l "
