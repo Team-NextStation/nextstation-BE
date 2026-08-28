@@ -13,12 +13,12 @@ import java.util.Optional;
 
 public interface RecommendationLogRepository extends JpaRepository<RecommendationLog, Long> {
 
-    // 랜덤뽑기의 직전 추천 1건. 로그인 사용자에게만 조회한다.
-    // created_at이 같은 순간에 겹칠 때를 대비해 id로 tie-break 한다.
+    // 같은 추천 세션에서 랜덤추천으로 제공한 역 ID 전체를 조회한다.
     @Query("SELECT DISTINCT rl.resultStationId FROM RecommendationLog rl " +
             "WHERE rl.recommendationSessionId = :sessionId AND rl.isRandom = true")
     List<Long> findRandomRecommendedStationIds(@Param("sessionId") String sessionId);
 
+    // 같은 추천 세션의 직전 랜덤추천 1건을 조회한다. created_at 동점은 id로 결정한다.
     Optional<RecommendationLog> findTopByRecommendationSessionIdAndIsRandomTrueOrderByCreatedAtDescIdDesc(
             String recommendationSessionId);
 

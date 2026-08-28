@@ -131,6 +131,21 @@ class CustomRecommendationControllerTest {
     }
 
     @Test
+    @DisplayName("UUIDv7 추천 세션 ID를 허용한다")
+    void recommendCustom_allowsUuidV7SessionId() throws Exception {
+        CustomRecommendationRequest uuidV7Request = new CustomRecommendationRequest(
+                "01890f9a-7b3c-7cc2-98c4-dc0c0c07398f", 1L, TravelTime.ANY, List.of("NATURE"));
+        given(recommendationCommandService.recommendCustom(isNull(), any())).willReturn(sampleResponse());
+
+        mockMvc.perform(post("/api/v1/recommendations/custom")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(uuidV7Request)))
+                .andExpect(status().isOk());
+
+        verify(recommendationCommandService).recommendCustom(isNull(), any());
+    }
+
+    @Test
     @DisplayName("여행 스타일이 4개 이상이면 400을 반환한다")
     void recommendCustom_tooManyTravelStyles() throws Exception {
         CustomRecommendationRequest invalid = new CustomRecommendationRequest(

@@ -11,7 +11,7 @@ public record RandomRecommendationRequest(
                 example = "550e8400-e29b-41d4-a716-446655440000")
         @NotBlank(message = "추천 세션 ID는 필수입니다.")
         @Pattern(
-                regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
                 message = "추천 세션 ID는 UUID 형식이어야 합니다."
         )
         String recommendationSessionId

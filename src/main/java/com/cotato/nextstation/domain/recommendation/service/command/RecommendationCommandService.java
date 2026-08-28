@@ -59,7 +59,7 @@ public class RecommendationCommandService {
     private final StationTagCountReader stationTagCountReader;
     private final RecommendationConverter recommendationConverter;
 
-    // 랜덤뽑기. memberId가 있으면 직전 추천 1건을 제외한다.
+    // 랜덤뽑기. 같은 추천 세션에서 아직 추천하지 않은 역을 제공한다.
     public RandomRecommendationResponse drawRandom(Long memberId, RandomRecommendationRequest request) {
         Station picked = pickDrawableStation(request.recommendationSessionId());
         recordRandomLog(memberId, picked.getId(), request.recommendationSessionId());
@@ -226,7 +226,7 @@ public class RecommendationCommandService {
         return pickRandom(excludeLastRandomRecommended(drawables, recommendationSessionId));
     }
 
-    // 로그인 사용자의 직전 추천 1건을 후보에서 제외한다. 제외 후 비면 전체에서 다시 뽑는다.
+    // 같은 세션의 직전 랜덤추천 1건을 후보에서 제외한다. 로그인 여부와 관계없이 적용하며, 제외 후 비면 전체에서 다시 뽑는다.
     // 랜덤뽑기(isRandom=true)와 맞춤추천(isRandom=false)은 서로 다른 화면이라 직전 추천도 각자 독립적으로 조회한다.
     private List<Station> excludeLastRandomRecommended(List<Station> stations, String recommendationSessionId) {
         Long lastStationId = recommendationLogRepository
@@ -247,7 +247,7 @@ public class RecommendationCommandService {
         return stations.get(ThreadLocalRandom.current().nextInt(stations.size()));
     }
 
-    // 랜덤뽑기는 선택 조건이 없어 결과 역만 남긴다.
+    // 랜덤뽑기는 회원 ID(있는 경우), 세션 ID, 결과 역을 남긴다.
     private void recordRandomLog(Long memberId, Long stationId, String recommendationSessionId) {
         recommendationLogRepository.save(
                 RecommendationLog.builder()

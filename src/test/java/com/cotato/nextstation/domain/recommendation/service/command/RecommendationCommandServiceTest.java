@@ -158,8 +158,8 @@ class RecommendationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("비로그인 뽑기는 직전 추천을 조회하지 않고 memberId 없이 로그를 남긴다")
-    void drawRandom_anonymousSkipsExclusion() {
+    @DisplayName("비로그인도 세션 이력을 조회하고 memberId 없이 로그를 남긴다")
+    void drawRandom_anonymousUsesSessionHistory() {
         // given
         given(stationRepository.findByIsDrawableTrue()).willReturn(List.of(station(1L, "A역")));
         given(stationPlaceReader.getPlacesByStation(anyLong())).willReturn(List.of());

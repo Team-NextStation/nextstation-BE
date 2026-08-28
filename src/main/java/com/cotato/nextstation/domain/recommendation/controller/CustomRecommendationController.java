@@ -10,7 +10,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,7 +39,6 @@ public class CustomRecommendationController {
                     보냈는데 만료·위조면 401이다.
                     """
     )
-    @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "추천 성공"),
             @ApiResponse(responseCode = "400", description = "요청 값 검증 실패 — 추천 세션 ID 누락·UUID 형식 오류, 필수 조건 누락, 여행 스타일 개수·존재 여부·중복 오류 (`GlobalErrorCode.VALIDATION_ERROR`)"),

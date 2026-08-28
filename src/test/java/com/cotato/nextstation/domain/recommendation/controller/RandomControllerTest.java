@@ -148,6 +148,19 @@ class RandomControllerTest {
     }
 
     @Test
+    @DisplayName("UUIDv7 추천 세션 ID를 허용한다")
+    void drawRandom_allowsUuidV7SessionId() throws Exception {
+        given(recommendationCommandService.drawRandom(isNull(), any())).willReturn(sampleResponse());
+
+        mockMvc.perform(post("/api/v1/random")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationSessionId\":\"01890f9a-7b3c-7cc2-98c4-dc0c0c07398f\"}"))
+                .andExpect(status().isOk());
+
+        verify(recommendationCommandService).drawRandom(isNull(), any());
+    }
+
+    @Test
     @DisplayName("뽑기 대상 역이 없으면 404를 반환한다")
     void drawRandom_noDrawableStation() throws Exception {
         given(recommendationCommandService.drawRandom(any(), any()))
