@@ -7,6 +7,7 @@ import com.cotato.nextstation.domain.member.dto.response.MemberProfileResponse;
 import com.cotato.nextstation.domain.member.dto.response.OtherMemberProfileResponse;
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.member.repository.MemberSocialAccountRepository;
@@ -58,8 +59,11 @@ public class MemberQueryService {
     // 프로필 화면 상단 헤더에서 쓰며, 스탬프·공개코스 탭 목록은 각 탭 진입 시 별도 API로 불러온다.
     public OtherMemberProfileResponse getMemberProfile(Long memberId) {
         Member member = memberRepository.findById(memberId)
+                .filter(m -> m.getStatus() != MemberStatus.WITHDRAWN)
                 .orElseThrow(() -> {
-                    log.warn("존재하지 않는 회원의 프로필 조회 시도: memberId={}", memberId);
+                    // 탈퇴 회원도 존재하지 않는 회원과 같은 응답(404)으로 처리한다. 탈퇴 여부를
+                    // 그대로 노출하면(예: 별도 에러코드) 재가입 여부·탈퇴 사실이 타인에게 드러난다.
+                    log.warn("존재하지 않거나 탈퇴한 회원의 프로필 조회 시도: memberId={}", memberId);
                     return new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
                 });
         long stampCount = memberStampQueryService.getStampCount(memberId);

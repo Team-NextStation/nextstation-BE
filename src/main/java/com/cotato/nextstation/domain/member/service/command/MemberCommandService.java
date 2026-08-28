@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.member.service.command;
 
+import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
 import com.cotato.nextstation.domain.member.dto.response.MemberProfileResponse;
@@ -10,6 +11,7 @@ import com.cotato.nextstation.domain.member.exception.NicknameErrorCode;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.member.util.NicknameValidator;
 import com.cotato.nextstation.domain.member.util.ProfileImageUrlValidator;
+import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -28,6 +32,8 @@ public class MemberCommandService {
     private final MemberConverter memberConverter;
     private final NicknameValidator nicknameValidator;
     private final ProfileImageUrlValidator profileImageUrlValidator;
+    private final CourseRepository courseRepository;
+    private final PlaceReviewRepository placeReviewRepository;
     private final ImageCommandService imageCommandService;
 
     // nickname/profileImageUrl 중 요청에 넘어온 필드만 부분 수정한다 (null이면 미변경, profileImageUrl은 빈 문자열이면 제거)
@@ -124,7 +130,25 @@ public class MemberCommandService {
         }
 
         MemberStatus previousStatus = member.getStatus();
+
+        // 상태 전환 자체를 조건부 UPDATE로 한 번 더 원자적으로 선점한다. 위 in-memory 체크만으로는
+        // 동시에 들어온 두 탈퇴 요청이 둘 다 통과할 수 있는데, 그 상태로 아래 좋아요 수 감소까지
+        // 두 번 실행되면 실제로 남아 있어야 할 좋아요까지 같이 깎여 나간다. 이 갱신에서 밀린
+        // 요청은 부수 효과 없이 조용히 끝낸다.
+        if (memberRepository.withdrawIfNotAlready(memberId, LocalDateTime.now()) == 0) {
+            log.info("동시 탈퇴 요청 중 하나가 선점 실패 - 무시: memberId={}", memberId);
+            return;
+        }
+
         member.withdraw();
+
+        // 이 회원이 남긴 좋아요는 다른 회원의 코스/리뷰에 남아 있는 like_count에 그대로
+        // 잡혀 있다. course_like/place_review_like 행은 유예 기간이 지나야 지워지므로,
+        // 그 전까지 남의 콘텐츠 순위·좋아요 수가 탈퇴 회원의 좋아요까지 포함해 부풀려지지
+        // 않도록 여기서 즉시 감소시킨다. 유예 기간 내 복구되면 restore()에서 되돌린다.
+        courseRepository.decreaseLikeCountForLikesByMember(memberId);
+        placeReviewRepository.decrementLikeCountForLikesByMember(memberId);
+
         log.info("회원 탈퇴 처리 완료: memberId={}, previousStatus={}", memberId, previousStatus);
     }
 
@@ -146,7 +170,24 @@ public class MemberCommandService {
             return member.getStatus();
         }
 
+        // Member.restore()와 같은 기준(닉네임 유무)으로 목표 상태를 미리 정해, 아래 조건부
+        // UPDATE에 그대로 쓴다.
+        MemberStatus targetStatus = member.getNickname() == null ? MemberStatus.PENDING : MemberStatus.ACTIVE;
+
+        // withdraw()와 같은 이유로 상태 전환을 조건부 UPDATE로 원자적으로 선점한다. 동시에 들어온
+        // 두 복구 요청(예: 중복 로그인 재시도)이 둘 다 통과하면 아래 좋아요 수 복구가 두 번
+        // 실행되어 실제보다 더 많이 늘어난다. 이 갱신에서 밀린 요청은 부수 효과 없이 끝낸다.
+        if (memberRepository.restoreIfWithdrawn(memberId, targetStatus) == 0) {
+            log.info("동시 복구 요청 중 하나가 선점 실패 - 무시: memberId={}", memberId);
+            return member.getStatus();
+        }
+
         member.restore();
+
+        // withdraw()에서 감소시킨 좋아요 수를 되돌린다.
+        courseRepository.increaseLikeCountForLikesByMember(memberId);
+        placeReviewRepository.incrementLikeCountForLikesByMember(memberId);
+
         log.info("탈퇴 유예 기간 내 계정 복구: memberId={}, restoredStatus={}", memberId, member.getStatus());
         return member.getStatus();
     }

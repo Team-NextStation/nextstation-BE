@@ -14,6 +14,7 @@ import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.journal.entity.JournalImage;
 import com.cotato.nextstation.domain.journal.enums.TravelDuration;
 import com.cotato.nextstation.domain.journal.exception.JournalErrorCode;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.journal.repository.JournalImageRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalImageRepository.JournalImageView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
@@ -238,6 +239,13 @@ public class JournalQueryService {
         // 2. 본인 여부 확인 → 타인이면 공개 일지만 조회 가능
         boolean isOwner = journal.getMember().getId().equals(memberId);
         if (!isOwner && !journal.isPublic()) {
+            throw new CustomException(JournalErrorCode.JOURNAL_FORBIDDEN);
+        }
+
+        // 2-1. 작성자가 탈퇴(WITHDRAWN)했으면 타인에게는 노출하지 않는다. 코스 목록 쪽은
+        // NOT_WITHDRAWN으로 걸러지지만, journalId를 직접 아는 경우(북마크·공유 링크 등)
+        // 목록을 거치지 않고 상세로 바로 들어올 수 있어 여기서도 방어한다.
+        if (!isOwner && journal.getMember().getStatus() == MemberStatus.WITHDRAWN) {
             throw new CustomException(JournalErrorCode.JOURNAL_FORBIDDEN);
         }
 

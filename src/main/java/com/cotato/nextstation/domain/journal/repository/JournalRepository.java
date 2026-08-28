@@ -112,4 +112,8 @@ public interface JournalRepository extends JpaRepository<Journal, Long> {
         String getLineName();
         LineCode getLineCode();
     }
+
+    // 리포트용 여행일지 작성 수
+    @Query("SELECT COUNT(j) FROM Journal j WHERE j.createdAt >= :from AND j.createdAt < :to")
+    long countCreatedInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

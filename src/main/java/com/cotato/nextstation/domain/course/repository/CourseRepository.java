@@ -13,6 +13,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+
 public interface CourseRepository extends JpaRepository<Course, Long> {
 
     // 다중 삭제 대상 조회. memberId로 걸러서 남의 코스는 애초에 대상에서 빠진다(부분 성공 허용).
@@ -48,21 +50,26 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE c.id = :courseId AND j.isPublic = true")
+            "WHERE c.id = :courseId AND j.isPublic = true AND " + NOT_WITHDRAWN)
     Optional<CourseDetailView> findPublicCourseDetail(@Param("courseId") Long courseId);
 
     // 공유 링크로 조회하는 화면. 소유자/공개 여부를 따지지 않는다.
     // courseId 대신 추측 불가능한 shareToken으로 조회해, 링크를 모르는 사람은 다른 사람의
     // 코스를 ID만 바꿔가며 열람할 수 없다.
     // 삭제된 코스는 Course의 @SQLRestriction으로 자동 제외된다.
+    // 작성자가 탈퇴(WITHDRAWN)했으면 공유 링크로도 열람할 수 없게 막는다. 탈퇴 전에 이미
+    // 뿌려진 링크는 소유자 조건이 없는 이 쿼리만 통과하면 계속 열리므로, 다른 코스 조회
+    // 경로와 마찬가지로 여기도 걸러야 한다.
     @Query("SELECT c.id AS courseId, c.name AS name, " +
             "s.id AS stationId, s.stationName AS stationName, " +
             "l.id AS lineId, l.name AS lineName, l.code AS lineCode " +
             "FROM Course c " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE c.shareToken = :shareToken")
+            "WHERE c.shareToken = :shareToken AND " + NOT_WITHDRAWN)
     Optional<CourseDetailView> findShareCourseDetail(@Param("shareToken") String shareToken);
 
     // 여행일지 삭제 시 참조를 끊을 코스를 찾는다.
@@ -76,7 +83,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     // 삭제된 코스/일지는 각 엔티티의 @SQLRestriction으로 걸러진다.
     @Query("SELECT COUNT(c) > 0 FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
-            "WHERE c.id = :courseId AND j.isPublic = true")
+            "JOIN Member mem ON mem.id = c.memberId " +
+            "WHERE c.id = :courseId AND j.isPublic = true AND " + NOT_WITHDRAWN)
     boolean existsPublicById(@Param("courseId") Long courseId);
 
     /**
@@ -132,6 +140,28 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     int decreaseLikeCountAll(@Param("memberId") Long memberId,
                              @Param("courseIds") Collection<Long> courseIds);
 
+    /**
+     * 탈퇴 회원이 좋아요를 눌러둔 코스들의 like_count를 일괄 감소시킨다.
+     * <p>
+     * course_like 행 자체는 지우지 않는다 — 유예 기간 안에 복구(restore)하면
+     * {@link #increaseLikeCountForLikesByMember}로 원상 복구해야 하는데, 행이 남아 있어야
+     * "이 회원이 어떤 코스를 좋아요했었는지"를 다시 알 수 있다. 실제 삭제는 유예 기간이
+     * 지나면 WithdrawnMemberCleaner가 처리한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Course c SET c.likeCount = c.likeCount - 1 " +
+            "WHERE c.likeCount > 0 " +
+            "AND EXISTS (SELECT 1 FROM CourseLike cs " +
+            "            WHERE cs.courseId = c.id AND cs.memberId = :memberId)")
+    void decreaseLikeCountForLikesByMember(@Param("memberId") Long memberId);
+
+    // 유예 기간 내 복구 시 위 감소분을 되돌린다.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Course c SET c.likeCount = c.likeCount + 1 " +
+            "WHERE EXISTS (SELECT 1 FROM CourseLike cs " +
+            "              WHERE cs.courseId = c.id AND cs.memberId = :memberId)")
+    void increaseLikeCountForLikesByMember(@Param("memberId") Long memberId);
+
     // 역별 인기 공개 코스 조회
     // 인기순 = view_count + like_count*2, 동률이면 최신순(j.createdAt, 여행일지 작성 시점)으로 2차 정렬
     // 코스는 일지 없이 먼저 생성될 수 있어 최신순 기준은 코스 저장 시점(c.createdAt)이 아니라
@@ -145,7 +175,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     @Query("SELECT c.id AS courseId, j.title AS name, c.viewCount AS viewCount, c.likeCount AS likeCount " +
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
-            "WHERE c.stationId = :stationId AND j.isPublic = true " +
+            "JOIN Member mem ON mem.id = c.memberId " +
+            "WHERE c.stationId = :stationId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "ORDER BY (c.viewCount + c.likeCount * 2) DESC, j.createdAt DESC, c.id DESC")
     List<PopularCourseView> findPopularPublicCoursesByStationId(@Param("stationId") Long stationId, Pageable pageable);
 
@@ -205,7 +236,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     // Course는 journalId를 Long으로만 들고 있어(연관관계 미매핑) Journal을 id로 ad-hoc 조인한다.
     @Query("SELECT COUNT(c) FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
-            "WHERE c.memberId = :memberId AND j.isPublic = true")
+            "JOIN Member mem ON mem.id = c.memberId " +
+            "WHERE c.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN)
     long countPublicCoursesByMemberId(@Param("memberId") Long memberId);
 
     // 다른 회원의 공개코스 탭 - 공개 코스 목록(최신순). 카드에 필요한 역/대표 호선·journalId·좋아요 수까지
@@ -224,8 +256,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE c.memberId = :memberId AND j.isPublic = true " +
+            "WHERE c.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "ORDER BY j.createdAt DESC, c.id DESC")
     List<MemberCourseCardView> findPublicCoursesByMemberId(@Param("memberId") Long memberId, Pageable pageable);
 
@@ -237,8 +270,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE c.memberId = :memberId AND j.isPublic = true " +
+            "WHERE c.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "AND (j.createdAt < :createdAt OR (j.createdAt = :createdAt AND c.id < :courseId)) " +
             "ORDER BY j.createdAt DESC, c.id DESC")
     List<MemberCourseCardView> findPublicCoursesByMemberIdAfterCursor(@Param("memberId") Long memberId,
@@ -273,8 +307,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "JOIN Course c ON c.id = cp.courseId " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE cp.placeId = :placeId AND j.isPublic = true " +
+            "WHERE cp.placeId = :placeId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "ORDER BY (c.viewCount + c.likeCount * 2) DESC, j.createdAt DESC, c.id DESC")
     List<PlaceCourseView> findPopularPublicCoursesByPlaceId(@Param("placeId") Long placeId, Pageable pageable);
 
@@ -312,8 +347,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE j.isPublic = true " +
+            "WHERE j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "AND (:lineId IS NULL OR l.id = :lineId) " +
             "AND (:stationId IS NULL OR s.id = :stationId) " +
             "AND (:conceptTourId IS NULL OR c.conceptTourId = :conceptTourId) " +
@@ -351,8 +387,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE j.isPublic = true " +
+            "WHERE j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "AND (:lineId IS NULL OR l.id = :lineId) " +
             "AND (:stationId IS NULL OR s.id = :stationId) " +
             "AND (:conceptTourId IS NULL OR c.conceptTourId = :conceptTourId) " +
@@ -393,8 +430,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE j.isPublic = true " +
+            "WHERE j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "ORDER BY c.likeCount DESC, c.viewCount DESC, j.createdAt DESC, c.id DESC")
     List<ExploreCourseView> findMostLikedCourses(Pageable pageable);
 
@@ -431,8 +469,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "JOIN s.drawLine l " +
-            "WHERE j.isPublic = true " +
+            "WHERE j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "ORDER BY l.name")
     List<LineView> findLinesWithPublicCourses();
 
@@ -465,7 +504,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "FROM Course c " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
-            "WHERE j.isPublic = true " +
+            "JOIN Member mem ON mem.id = c.memberId " +
+            "WHERE j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "AND (:lineId IS NULL OR s.drawLine.id = :lineId) " +
             "ORDER BY s.stationName")
     List<StationView> findStationsWithPublicCourses(@Param("lineId") Long lineId);
@@ -549,4 +589,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
         Long getStationId();
         String getStationName();
     }
+
+    // 리포트용 코스 저장 수
+    @Query("SELECT COUNT(c) FROM Course c "
+            + "WHERE c.originalCourseId IS NULL AND c.createdAt >= :from AND c.createdAt < :to")
+    long countCreatedInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

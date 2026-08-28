@@ -20,6 +20,7 @@ import com.cotato.nextstation.domain.journal.repository.JournalRepository.Course
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJournalCardView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
 import com.cotato.nextstation.domain.member.entity.Member;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
@@ -342,6 +343,33 @@ class JournalQueryServiceTest {
                     .isInstanceOf(CustomException.class);
 
             verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("타인이 탈퇴한 작성자의 공개 일지를 조회하면 JOURNAL_FORBIDDEN 예외를 던지고 조회수 증가 호출은 나가지 않는다")
+        void otherMemberViewsWithdrawnAuthorJournal_throwsForbiddenAndNeverIncreasesViewCount() {
+            // given: 탈퇴는 soft delete라 journal 행과 작성자(member) 행은 남아 있지만, 재가입 시
+            // 과거 콘텐츠가 다시 노출되지 않도록 타인 조회는 막는다. isPublic 여부와 무관하게 막혀야 한다.
+            given(journal.getMember().getStatus()).willReturn(MemberStatus.WITHDRAWN);
+
+            // when & then
+            assertThatThrownBy(() -> journalQueryService.getJournalDetail(OTHER_MEMBER_ID, JOURNAL_ID))
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_FORBIDDEN.getMessage());
+
+            verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("본인은 자신이 탈퇴 처리된 상태여도(예: 탈퇴 유예 기간 중 재로그인) 자기 일지를 그대로 조회할 수 있다")
+        void ownerViewsOwnJournal_evenIfWithdrawn() {
+            // given
+            given(journal.getMember().getStatus()).willReturn(MemberStatus.WITHDRAWN);
+            given(courseQueryService.isLikedByMember(COURSE_ID, OWNER_ID)).willReturn(false);
+
+            // when & then: 본인 조회는 status를 보지 않으므로 예외 없이 성공해야 한다
+            assertThatCode(() -> journalQueryService.getJournalDetail(OWNER_ID, JOURNAL_ID))
+                    .doesNotThrowAnyException();
         }
 
         @Test

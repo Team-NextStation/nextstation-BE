@@ -156,4 +156,18 @@ class MemberQueryServiceTest {
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
     }
+
+    @Test
+    @DisplayName("탈퇴한 회원의 프로필을 조회하면 존재하지 않는 회원과 동일하게 예외가 발생한다")
+    void getMemberProfile_withdrawnMember_treatedAsNotFound() {
+        // given: soft delete라 행은 남아 있지만, 탈퇴 사실 자체를 노출하지 않기 위해 404로 처리한다
+        Member withdrawnMember = activeMember();
+        withdrawnMember.withdraw();
+        given(memberRepository.findById(1L)).willReturn(Optional.of(withdrawnMember));
+
+        // when & then
+        assertThatThrownBy(() -> memberQueryService.getMemberProfile(1L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
+    }
 }

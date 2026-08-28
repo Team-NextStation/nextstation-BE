@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.member.service.command;
 
+import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
 import com.cotato.nextstation.domain.member.dto.response.MemberProfileResponse;
@@ -11,6 +12,7 @@ import com.cotato.nextstation.domain.member.exception.NicknameErrorCode;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.member.util.NicknameValidator;
 import com.cotato.nextstation.domain.member.util.ProfileImageUrlValidator;
+import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,6 +59,12 @@ class MemberCommandServiceTest {
 
     @Mock
     private ImageCommandService imageCommandService;
+
+    @Mock
+    private CourseRepository courseRepository;
+
+    @Mock
+    private PlaceReviewRepository placeReviewRepository;
 
     private static final Long MEMBER_ID = 1L;
     private static final String OLD_IMAGE_URL =
@@ -223,6 +231,7 @@ class MemberCommandServiceTest {
         // given
         Member member = activeMember();
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.withdrawIfNotAlready(eq(1L), any(LocalDateTime.class))).willReturn(1);
 
         // when
         memberCommandService.withdraw(1L);
@@ -230,6 +239,9 @@ class MemberCommandServiceTest {
         // then
         assertThat(member.getStatus()).isEqualTo(MemberStatus.WITHDRAWN);
         assertThat(member.getDeletedAt()).isNotNull();
+        // 이 회원이 남의 코스/리뷰에 남겨둔 좋아요가 like_count에서 즉시 빠져야 한다
+        verify(courseRepository).decreaseLikeCountForLikesByMember(1L);
+        verify(placeReviewRepository).decrementLikeCountForLikesByMember(1L);
     }
 
     @Test
@@ -238,6 +250,7 @@ class MemberCommandServiceTest {
         // given
         Member member = activeMember();
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.withdrawIfNotAlready(eq(1L), any(LocalDateTime.class))).willReturn(1);
 
         // when
         memberCommandService.withdraw(1L);
@@ -255,6 +268,7 @@ class MemberCommandServiceTest {
         Member member = Member.builder().email("pending@example.com").password("encoded").build();
         ReflectionTestUtils.setField(member, "id", 1L);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.withdrawIfNotAlready(eq(1L), any(LocalDateTime.class))).willReturn(1);
 
         // when
         memberCommandService.withdraw(1L);
@@ -277,6 +291,26 @@ class MemberCommandServiceTest {
 
         // then
         assertThat(member.getDeletedAt()).isEqualTo(firstDeletedAt);
+        // 이미 탈퇴 처리된 회원이라 재요청은 무시되고, 좋아요 수 감소도 다시 일어나지 않는다
+        verify(courseRepository, never()).decreaseLikeCountForLikesByMember(any());
+        verify(placeReviewRepository, never()).decrementLikeCountForLikesByMember(any());
+    }
+
+    @Test
+    @DisplayName("동시 탈퇴 요청 중 하나가 선점에 실패하면 좋아요 수를 감소시키지 않는다")
+    void withdraw_losesRace_skipsLikeCountAdjustment() {
+        // given: in-memory 체크는 통과했지만(아직 ACTIVE로 보임), 조건부 UPDATE는 이미 다른
+        // 요청이 선점해 0행이 갱신됐다고 가정한다 - 동시에 들어온 탈퇴 요청 케이스를 재현한다.
+        Member member = activeMember();
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.withdrawIfNotAlready(eq(1L), any(LocalDateTime.class))).willReturn(0);
+
+        // when
+        memberCommandService.withdraw(1L);
+
+        // then
+        verify(courseRepository, never()).decreaseLikeCountForLikesByMember(any());
+        verify(placeReviewRepository, never()).decrementLikeCountForLikesByMember(any());
     }
 
     @Test
@@ -297,6 +331,7 @@ class MemberCommandServiceTest {
         // given - 3일 전 탈퇴
         Member member = withdrawnMember(LocalDateTime.now().minusDays(3));
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.restoreIfWithdrawn(eq(1L), eq(MemberStatus.ACTIVE))).willReturn(1);
 
         // when
         MemberStatus restored = memberCommandService.restore(1L);
@@ -305,6 +340,9 @@ class MemberCommandServiceTest {
         assertThat(restored).isEqualTo(MemberStatus.ACTIVE);
         assertThat(member.getStatus()).isEqualTo(MemberStatus.ACTIVE);
         assertThat(member.getDeletedAt()).isNull();
+        // 탈퇴 시 감소시켰던 좋아요 수를 되돌린다
+        verify(courseRepository).increaseLikeCountForLikesByMember(1L);
+        verify(placeReviewRepository).incrementLikeCountForLikesByMember(1L);
     }
 
     @Test
@@ -315,6 +353,7 @@ class MemberCommandServiceTest {
         ReflectionTestUtils.setField(member, "id", 1L);
         member.withdraw();
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.restoreIfWithdrawn(eq(1L), eq(MemberStatus.PENDING))).willReturn(1);
 
         // when
         MemberStatus restored = memberCommandService.restore(1L);
@@ -336,6 +375,27 @@ class MemberCommandServiceTest {
         // then
         assertThat(restored).isEqualTo(MemberStatus.WITHDRAWN);
         assertThat(member.getDeletedAt()).isNotNull();
+        // 복구되지 않았으니 좋아요 수도 되돌리지 않는다
+        verify(courseRepository, never()).increaseLikeCountForLikesByMember(any());
+        verify(placeReviewRepository, never()).incrementLikeCountForLikesByMember(any());
+    }
+
+    @Test
+    @DisplayName("동시 복구 요청 중 하나가 선점에 실패하면 좋아요 수를 되돌리지 않는다")
+    void restore_losesRace_skipsLikeCountAdjustment() {
+        // given: isRestorable()은 통과했지만, 조건부 UPDATE는 이미 다른 요청(예: 중복 로그인
+        // 재시도)이 선점해 0행이 갱신됐다고 가정한다.
+        Member member = withdrawnMember(LocalDateTime.now().minusDays(3));
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberRepository.restoreIfWithdrawn(eq(1L), eq(MemberStatus.ACTIVE))).willReturn(0);
+
+        // when
+        MemberStatus restored = memberCommandService.restore(1L);
+
+        // then
+        assertThat(restored).isEqualTo(MemberStatus.WITHDRAWN);
+        verify(courseRepository, never()).increaseLikeCountForLikesByMember(any());
+        verify(placeReviewRepository, never()).incrementLikeCountForLikesByMember(any());
     }
 
     @Test
@@ -351,5 +411,7 @@ class MemberCommandServiceTest {
         // then
         assertThat(restored).isEqualTo(MemberStatus.ACTIVE);
         assertThat(member.getDeletedAt()).isNull();
+        verify(courseRepository, never()).increaseLikeCountForLikesByMember(any());
+        verify(placeReviewRepository, never()).incrementLikeCountForLikesByMember(any());
     }
 }

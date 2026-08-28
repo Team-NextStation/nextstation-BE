@@ -30,6 +30,10 @@ logging:
   discord-error:
     webhook-url: ${DISCORD_ERROR_WEBHOOK_URL}
 
+report:
+  discord:
+    webhook-url: ${DISCORD_REPORT_WEBHOOK_URL}
+
 jwt:
   secret: ${JWT_SECRET}
 
