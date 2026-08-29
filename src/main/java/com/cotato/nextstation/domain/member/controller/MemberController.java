@@ -69,11 +69,12 @@ public class MemberController {
     }
 
     @Operation(
-            summary = "계정 정보(가입한 이메일) 조회",
+            summary = "계정 정보 조회",
             description = """
-                    설정 > 계정 정보 화면에 표시할 가입 경로와 이메일을 조회한다.
+                    설정 > 계정 정보 화면에 표시할 가입 경로, 이메일, 생년월일을 조회한다.
                     - `provider`: 이메일/비밀번호로 가입했으면 `LOCAL`, 소셜 로그인으로 가입했으면 `KAKAO`/`APPLE`.
                     - `email`: 카카오 이메일은 필수 동의 항목이지만, 카카오 계정에 인증된 이메일이 없으면 제공되지 않아 `null`일 수 있다.
+                    - `birthDate`: 프로필 설정 API 요청과 동일하게 `yyyyMMdd` 형식.
                     - accessToken 인증 필요. 우측 상단 자물쇠(Authorize) 버튼을 눌러 로그인 API 응답의 accessToken 값을(Bearer 접두사 없이) 넣으면 된다.
                     """
     )
