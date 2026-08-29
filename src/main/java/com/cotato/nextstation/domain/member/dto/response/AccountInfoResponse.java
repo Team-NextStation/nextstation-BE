@@ -14,8 +14,8 @@ public record AccountInfoResponse(
         @Schema(description = "가입한 이메일. 카카오 계정에 인증된 이메일이 없는 회원은 null", example = "user@example.com")
         String email,
 
-        @Schema(description = "생년월일 (yyyyMMdd)", example = "20010101")
-        @JsonFormat(pattern = "yyyyMMdd") // 프로필 설정 요청(ProfileSetupRequest)과 동일한 포맷
+        @Schema(type = "string", pattern = "^[0-9]{8}$", description = "생년월일 (yyyyMMdd)", example = "\"20010101\"")
+        @JsonFormat(pattern = "yyyyMMdd")
         LocalDate birthDate
 ) {
 }
