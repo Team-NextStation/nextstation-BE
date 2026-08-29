@@ -60,6 +60,7 @@ pom.xml.releaseBackup
 *.7z
 
 .claude
+.codex
 
 # Raw external data (station pipeline source files)
 src/main/resources/data/raw/
