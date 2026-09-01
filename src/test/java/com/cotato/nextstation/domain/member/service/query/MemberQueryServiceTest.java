@@ -81,7 +81,7 @@ class MemberQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
         given(memberSocialAccountRepository.findFirstByMemberIdOrderByIdAsc(1L)).willReturn(Optional.empty());
         given(memberConverter.toAccountInfoResponse(member, null))
-                .willReturn(new AccountInfoResponse("LOCAL", "user@example.com"));
+                .willReturn(new AccountInfoResponse("LOCAL", "user@example.com", LocalDate.of(2000, 1, 1)));
 
         // when
         AccountInfoResponse response = memberQueryService.getMyAccountInfo(1L);
@@ -89,6 +89,7 @@ class MemberQueryServiceTest {
         // then
         assertThat(response.provider()).isEqualTo("LOCAL");
         assertThat(response.email()).isEqualTo("user@example.com");
+        assertThat(response.birthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
     }
 
     @Test
@@ -105,13 +106,14 @@ class MemberQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
         given(memberSocialAccountRepository.findFirstByMemberIdOrderByIdAsc(1L)).willReturn(Optional.of(socialAccount));
         given(memberConverter.toAccountInfoResponse(member, socialAccount))
-                .willReturn(new AccountInfoResponse("KAKAO", "user@example.com"));
+                .willReturn(new AccountInfoResponse("KAKAO", "user@example.com", LocalDate.of(2000, 1, 1)));
 
         // when
         AccountInfoResponse response = memberQueryService.getMyAccountInfo(1L);
 
         // then
         assertThat(response.provider()).isEqualTo("KAKAO");
+        assertThat(response.birthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
     }
 
     @Test
