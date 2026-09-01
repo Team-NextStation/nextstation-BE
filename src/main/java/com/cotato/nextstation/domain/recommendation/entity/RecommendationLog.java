@@ -24,8 +24,11 @@ import java.util.stream.Collectors;
 @Getter
 @Table(
         name = "recommendation_log",
-        // 직전 추천 1건 조회(member_id 필터 + 최신순)를 위한 복합 인덱스
-        indexes = @Index(name = "idx_recommendation_log_member_created", columnList = "member_id, created_at")
+        indexes = {
+                @Index(name = "idx_recommendation_log_member_created", columnList = "member_id, created_at"),
+                @Index(name = "idx_recommendation_log_session_condition",
+                        columnList = "session_id, is_random, departure_station_id, travel_time, travel_styles")
+        }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
@@ -44,6 +47,9 @@ public class RecommendationLog extends BaseEntity {
     @Column(name = "is_random", nullable = false)
     private boolean isRandom;
 
+    @Column(name = "session_id", length = 36)
+    private String recommendationSessionId;
+
     @Column(name = "departure_station_id")
     private Long departureStationId;
 
@@ -60,16 +66,18 @@ public class RecommendationLog extends BaseEntity {
 
     @Builder
     private RecommendationLog(Long memberId, Long resultStationId, boolean isRandom,
-                              Long departureStationId, TravelTime travelTime, List<String> travelStyles) {
+                              String recommendationSessionId, Long departureStationId,
+                              TravelTime travelTime, List<String> travelStyles) {
         this.memberId = memberId;
         this.resultStationId = resultStationId;
         this.isRandom = isRandom;
+        this.recommendationSessionId = recommendationSessionId;
         this.departureStationId = departureStationId;
         this.travelTime = travelTime;
-        this.travelStyles = joinSorted(travelStyles);
+        this.travelStyles = canonicalizeTravelStyles(travelStyles);
     }
 
-    private static String joinSorted(List<String> travelStyles) {
+    public static String canonicalizeTravelStyles(List<String> travelStyles) {
         if (travelStyles == null || travelStyles.isEmpty()) {
             return null;
         }

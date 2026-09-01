@@ -40,7 +40,7 @@ public class MemberQueryService {
         return memberConverter.toProfileResponse(member);
     }
 
-    // 계정 정보(가입 경로 + 가입한 이메일) 조회
+    // 계정 정보 조회
     public AccountInfoResponse getMyAccountInfo(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> {

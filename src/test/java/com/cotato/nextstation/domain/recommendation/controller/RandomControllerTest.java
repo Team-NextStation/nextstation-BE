@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -42,6 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RandomControllerTest {
 
     private static final String TOKEN = "access-token";
+    private static final String SESSION_ID = "11111111-1111-4111-8111-111111111111";
+    private static final String REQUEST_JSON = "{\"recommendationSessionId\":\"" + SESSION_ID + "\"}";
 
     @Autowired
     MockMvc mockMvc;
@@ -75,9 +78,10 @@ class RandomControllerTest {
     @Test
     @DisplayName("로그인 뽑기는 토큰의 memberId로 호출되고 200과 역/코스를 반환한다")
     void drawRandom_withMember() throws Exception {
-        given(recommendationCommandService.drawRandom(eq(1L))).willReturn(sampleResponse());
+        given(recommendationCommandService.drawRandom(eq(1L), any())).willReturn(sampleResponse());
 
-        mockMvc.perform(post("/api/v1/random").header("Authorization", "Bearer " + TOKEN))
+        mockMvc.perform(post("/api/v1/random").header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.data.station.stationName").value("보문역"))
@@ -98,9 +102,10 @@ class RandomControllerTest {
         RandomRecommendationResponse response = new RandomRecommendationResponse(
                 new RecommendedStationResponse(10L, "보문역", "보문역 소개", List.of(), List.of()),
                 new CoursePreviewResponse("보문역 환승여행 코스", List.of()));
-        given(recommendationCommandService.drawRandom(eq(1L))).willReturn(response);
+        given(recommendationCommandService.drawRandom(eq(1L), any())).willReturn(response);
 
-        mockMvc.perform(post("/api/v1/random").header("Authorization", "Bearer " + TOKEN))
+        mockMvc.perform(post("/api/v1/random").header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.station.lines").isArray())
                 .andExpect(jsonPath("$.data.station.lines").isEmpty())
@@ -111,20 +116,57 @@ class RandomControllerTest {
     @Test
     @DisplayName("토큰 없는 비로그인 뽑기는 memberId null로 호출되고 200을 반환한다")
     void drawRandom_anonymous() throws Exception {
-        given(recommendationCommandService.drawRandom(isNull())).willReturn(sampleResponse());
+        given(recommendationCommandService.drawRandom(isNull(), any())).willReturn(sampleResponse());
 
-        mockMvc.perform(post("/api/v1/random"))
+        mockMvc.perform(post("/api/v1/random").contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.station.stationId").value(10));
     }
 
     @Test
+    @DisplayName("추천 세션 ID가 없으면 400을 반환한다")
+    void drawRandom_missingSessionId() throws Exception {
+        mockMvc.perform(post("/api/v1/random")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CLIENT_ERROR_400_VALIDATION_ERROR"));
+
+        verify(recommendationCommandService, never()).drawRandom(any(), any());
+    }
+
+    @Test
+    @DisplayName("추천 세션 ID가 UUID 형식이 아니면 400을 반환한다")
+    void drawRandom_invalidSessionId() throws Exception {
+        mockMvc.perform(post("/api/v1/random")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationSessionId\":\"not-a-uuid\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CLIENT_ERROR_400_VALIDATION_ERROR"));
+
+        verify(recommendationCommandService, never()).drawRandom(any(), any());
+    }
+
+    @Test
+    @DisplayName("UUIDv7 추천 세션 ID를 허용한다")
+    void drawRandom_allowsUuidV7SessionId() throws Exception {
+        given(recommendationCommandService.drawRandom(isNull(), any())).willReturn(sampleResponse());
+
+        mockMvc.perform(post("/api/v1/random")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationSessionId\":\"01890f9a-7b3c-7cc2-98c4-dc0c0c07398f\"}"))
+                .andExpect(status().isOk());
+
+        verify(recommendationCommandService).drawRandom(isNull(), any());
+    }
+
+    @Test
     @DisplayName("뽑기 대상 역이 없으면 404를 반환한다")
     void drawRandom_noDrawableStation() throws Exception {
-        given(recommendationCommandService.drawRandom(any()))
+        given(recommendationCommandService.drawRandom(any(), any()))
                 .willThrow(new CustomException(RecommendationErrorCode.NO_DRAWABLE_STATION));
 
-        mockMvc.perform(post("/api/v1/random"))
+        mockMvc.perform(post("/api/v1/random").contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CLIENT_ERROR_404_NO_DRAWABLE_STATION"));
     }
@@ -137,10 +179,11 @@ class RandomControllerTest {
 
         // when & then
         mockMvc.perform(post("/api/v1/random")
-                        .header("Authorization", "Bearer broken-token"))
+                        .header("Authorization", "Bearer broken-token")
+                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("CLIENT_ERROR_401_INVALID_TOKEN"));
-        verify(recommendationCommandService, never()).drawRandom(any());
+        verify(recommendationCommandService, never()).drawRandom(any(), any());
     }
 
     @Test
@@ -150,21 +193,23 @@ class RandomControllerTest {
 
         // when & then
         mockMvc.perform(post("/api/v1/random")
-                        .header("Authorization", "Basic dXNlcjpwYXNz"))
+                        .header("Authorization", "Basic dXNlcjpwYXNz")
+                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("CLIENT_ERROR_401_INVALID_TOKEN"));
-        verify(recommendationCommandService, never()).drawRandom(any());
+        verify(recommendationCommandService, never()).drawRandom(any(), any());
     }
 
     @Test
     @DisplayName("값이 빈 Authorization 헤더는 보내지 않은 것과 같게 보고 비로그인으로 처리한다")
     void drawRandom_blankHeader() throws Exception {
         // given: 로그아웃 상태에서 빈 헤더를 실어 보내는 클라이언트가 있어도 둘러보기가 막히면 안 된다
-        given(recommendationCommandService.drawRandom(isNull())).willReturn(sampleResponse());
+        given(recommendationCommandService.drawRandom(isNull(), any())).willReturn(sampleResponse());
 
         // when & then
         mockMvc.perform(post("/api/v1/random")
-                        .header("Authorization", "  "))
+                        .header("Authorization", "  ")
+                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST_JSON))
                 .andExpect(status().isOk());
     }
 
