@@ -20,7 +20,7 @@ class MemberConverterTest {
 
         AccountInfoResponse response = memberConverter.toAccountInfoResponse(member, null);
 
-        assertThat(response).isEqualTo(new AccountInfoResponse("LOCAL", "user@example.com"));
+        assertThat(response).isEqualTo(new AccountInfoResponse("LOCAL", "user@example.com", null));
     }
 
     @Test
@@ -36,7 +36,7 @@ class MemberConverterTest {
 
         AccountInfoResponse response = memberConverter.toAccountInfoResponse(member, socialAccount);
 
-        assertThat(response).isEqualTo(new AccountInfoResponse("KAKAO", "user@example.com"));
+        assertThat(response).isEqualTo(new AccountInfoResponse("KAKAO", "user@example.com", null));
     }
 
     @Test
