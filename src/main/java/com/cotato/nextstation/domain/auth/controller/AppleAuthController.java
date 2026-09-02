@@ -37,9 +37,9 @@ public class AppleAuthController {
     private final AppleSignupCommandService appleSignupCommandService;
     private final RefreshTokenCookieFactory refreshTokenCookieFactory;
 
-    @Tag(name = "Apple 로그인")
+    @Tag(name = "애플 로그인")
     @Operation(
-            summary = "Apple 로그인/신규가입 판별",
+            summary = "애플 로그인/신규가입 판별",
             description = """
                     iOS 네이티브 Sign In with Apple SDK가 발급한 identity token을 검증해 신규/기존 회원을 판별한다.
                     카카오와 달리 인가코드 교환이나 별도의 사용자정보조회 API 호출이 없다 - identity token 자체에 서명·클레임 검증을 수행한다.
@@ -77,9 +77,9 @@ public class AppleAuthController {
         return CommonResponse.success(response);
     }
 
-    @Tag(name = "Apple 로그인")
+    @Tag(name = "애플 로그인")
     @Operation(
-            summary = "Apple 신규 회원가입 완료(약관 동의)",
+            summary = "애플 신규 회원가입 완료(약관 동의)",
             description = """
                     `/apple/login` 응답이 `resultType=NEW_MEMBER`였던 경우에만 호출한다.
                     - Member(PENDING) 생성과 약관 동의(`member_terms_agreement`) 저장, Apple 계정 연동(`member_social_account`)이 한 트랜잭션으로 처리된다.
