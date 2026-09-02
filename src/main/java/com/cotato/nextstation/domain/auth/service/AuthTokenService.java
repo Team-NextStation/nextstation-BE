@@ -80,7 +80,7 @@ public class AuthTokenService {
         IssuedTokens tokens = authTokenIssuer.issue(member.getId());
 
         log.info("로그인 성공: memberId={}, restored={}", member.getId(), restored);
-        return new LoginResult(member.getId(), tokens.accessToken(), tokens.refreshToken(), restored);
+        return new LoginResult(member.getId(), tokens.accessToken(), tokens.refreshToken(), restored, member.getRole());
     }
 
     /**
@@ -115,7 +115,7 @@ public class AuthTokenService {
         IssuedTokens tokens = authTokenIssuer.reissue(member.getId(), familyId, rotatedJti);
 
         log.info("accessToken 재발급 성공: memberId={}, familyId={}", member.getId(), familyId);
-        return new ReissueResult(member.getId(), tokens.accessToken(), tokens.refreshToken());
+        return new ReissueResult(member.getId(), tokens.accessToken(), tokens.refreshToken(), member.getRole());
     }
 
     /**
