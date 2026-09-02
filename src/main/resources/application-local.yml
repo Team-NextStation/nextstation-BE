@@ -52,6 +52,10 @@ kakao:
     client-secret: ${KAKAO_OAUTH_CLIENT_SECRET}
     redirect-uris: ${KAKAO_OAUTH_REDIRECT_URIS}
 
+apple:
+  oauth:
+    allowed-audiences: ${APPLE_OAUTH_ALLOWED_AUDIENCES:}
+
 aws:
   s3:
     bucket-name: ${AWS_S3_BUCKET_NAME:}
