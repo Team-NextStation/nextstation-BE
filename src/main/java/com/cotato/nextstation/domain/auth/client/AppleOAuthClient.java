@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.auth.client;
 
+import com.cotato.nextstation.domain.auth.client.dto.AppleIdentityToken;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
@@ -76,8 +77,8 @@ public class AppleOAuthClient {
         this.allowedAudiences = Set.copyOf(allowedAudiences);
     }
 
-    // 서명(RS256) + iss/aud/exp 검증까지 통과한 claims를 반환한다. 위변조·만료 토큰은 CustomException(401)으로 거부된다.
-    public Claims verify(String identityToken) {
+    // 서명(RS256) + iss/aud/exp 검증까지 통과한 claims에서 우리가 쓰는 값만 추려 반환한다. 위변조·만료 토큰은 CustomException(401)으로 거부된다.
+    public AppleIdentityToken verify(String identityToken) {
 
         Claims claims;
         try {
@@ -101,7 +102,7 @@ public class AppleOAuthClient {
             throw new CustomException(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN);
         }
 
-        return claims;
+        return AppleIdentityToken.from(claims);
     }
 
     private Key locateKey(Header header) {
