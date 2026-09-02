@@ -52,18 +52,19 @@ public class ExploreController {
                     코스는 함께 속한 1~9호선 칩에서 그대로 조회된다(예: 옥수역 코스는 3호선 칩에서 나온다).
                     `selectedLineId`는 `hasCourses = true`인 첫 노선이라 진입 화면이 비지 않는다.
 
-                    둘러보기 탭은 로그인 필수다. 토큰이 없으면 401이며, 카드의 `isLiked`는 항상 요청한 회원 기준으로 채워진다.
+                    accessToken은 **선택**이다. 비로그인도 조회할 수 있고 카드의 `isLiked`는 항상 false다.
+                    토큰을 보냈는데 만료되었거나 위변조된 경우는 401이다.
                     """
     )
     @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "조회 성공 (공개 코스가 없으면 각 목록이 빈 배열)"),
-            @ApiResponse(responseCode = "401", description = "accessToken이 없거나 위변조·만료 (`GlobalErrorCode.UNAUTHORIZED`, `GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
+            @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
     })
     @GetMapping
     public CommonResponse<ExploreResponse> getExplore(
-            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
-        Long memberId = principal.memberId();
+            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal) {
+        Long memberId = principal != null ? principal.memberId() : null;
         return CommonResponse.success(exploreQueryService.getExplore(memberId));
     }
 
@@ -85,7 +86,7 @@ public class ExploreController {
                       정렬 토글이 없는 검색 결과 화면은 생략하면 되고, 그때도 인기순으로 나온다.
                     - **정렬을 바꾸면 커서를 버리고 첫 페이지부터 다시 요청해야 한다.** 정렬마다 커서 구조가 달라
                       이전 커서를 그대로 보내면 400이다.
-                    - `isLiked`는 요청한 회원의 좋아요 여부다. 둘러보기 탭은 로그인 필수라 항상 채워진다.
+                    - `isLiked`는 요청한 회원의 좋아요 여부다. 비로그인이면 항상 false다.
                     - `imageUrl`은 작성자가 여행일지에 올린 첫 사진이다. 아직 사진 데이터가 없어 현재는 null이다.
                     """
     )
@@ -93,11 +94,11 @@ public class ExploreController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "조회 성공 (결과 없으면 빈 목록)"),
             @ApiResponse(responseCode = "400", description = "size 범위를 벗어남 (`GlobalErrorCode.INVALID_PAGE_SIZE`) 또는 커서가 잘못됨/정렬과 맞지 않음 (`GlobalErrorCode.INVALID_CURSOR`)"),
-            @ApiResponse(responseCode = "401", description = "accessToken이 없거나 위변조·만료 (`GlobalErrorCode.UNAUTHORIZED`, `GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
+            @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
     })
     @GetMapping("/courses")
     public CommonResponse<ExploreCourseListResponse> getExploreCourses(
-            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
+            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal,
             @Parameter(description = "호선 필터 (생략하면 전체)", example = "2")
             @RequestParam(required = false) Long lineId,
             @Parameter(description = "역 필터 (생략하면 전체)", example = "123")
@@ -110,7 +111,7 @@ public class ExploreController {
             @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (1~50, 기본 10)", example = "10")
             @RequestParam(required = false) Integer size) {
-        Long memberId = principal.memberId();
+        Long memberId = principal != null ? principal.memberId() : null;
         ExploreCourseCondition condition = new ExploreCourseCondition(lineId, stationId, keyword, null);
         return CommonResponse.success(
                 courseQueryService.getExploreCourses(memberId, condition, sort, cursor, size));
@@ -132,16 +133,16 @@ public class ExploreController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "조회 성공 (결과 없으면 빈 목록)"),
             @ApiResponse(responseCode = "400", description = "size 범위를 벗어남 (`GlobalErrorCode.INVALID_PAGE_SIZE`) 또는 커서가 잘못됨 (`GlobalErrorCode.INVALID_CURSOR`)"),
-            @ApiResponse(responseCode = "401", description = "accessToken이 없거나 위변조·만료 (`GlobalErrorCode.UNAUTHORIZED`, `GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
+            @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
     })
     @GetMapping("/courses/popular")
     public CommonResponse<ExploreCourseListResponse> getMostLikedCourses(
-            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
+            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal,
             @Parameter(description = "다음 페이지 커서 (첫 페이지는 생략)")
             @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (1~50, 기본 10)", example = "10")
             @RequestParam(required = false) Integer size) {
-        Long memberId = principal.memberId();
+        Long memberId = principal != null ? principal.memberId() : null;
         return CommonResponse.success(courseQueryService.getMostLikedCourses(memberId, cursor, size));
     }
 }

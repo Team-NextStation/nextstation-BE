@@ -236,17 +236,18 @@ public class JournalQueryService {
         Journal journal = journalRepository.findById(journalId)
                 .orElseThrow(() -> new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND));
 
-        // 2. 본인 여부 확인 → 타인이면 공개 일지만 조회 가능
+        // 2. 본인 여부 확인 → 타인이면 공개 일지만 조회 가능.
+        // 비공개 일지의 존재 여부까지 드러내지 않도록 403이 아닌 404로 응답한다.
         boolean isOwner = journal.getMember().getId().equals(memberId);
         if (!isOwner && !journal.isPublic()) {
-            throw new CustomException(JournalErrorCode.JOURNAL_FORBIDDEN);
+            throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
         }
 
         // 2-1. 작성자가 탈퇴(WITHDRAWN)했으면 타인에게는 노출하지 않는다. 코스 목록 쪽은
         // NOT_WITHDRAWN으로 걸러지지만, journalId를 직접 아는 경우(북마크·공유 링크 등)
         // 목록을 거치지 않고 상세로 바로 들어올 수 있어 여기서도 방어한다.
         if (!isOwner && journal.getMember().getStatus() == MemberStatus.WITHDRAWN) {
-            throw new CustomException(JournalErrorCode.JOURNAL_FORBIDDEN);
+            throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
         }
 
         // 3. memberStampId → courseId
