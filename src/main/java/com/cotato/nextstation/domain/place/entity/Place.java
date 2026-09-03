@@ -1,8 +1,11 @@
 package com.cotato.nextstation.domain.place.entity;
 
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -11,9 +14,11 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "place")
+@SQLRestriction("status = 'APPROVED'")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Place extends BaseTimeEntity {
@@ -46,6 +51,13 @@ public class Place extends BaseTimeEntity {
     @Column(name = "kakao_place_url")
     private String kakaoPlaceUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PlaceStatus status;
+
+    @Column(name = "delete_reason", length = 255)
+    private String deleteReason;
+
     @Builder
     public Place(Long stationId,  Category category, String description, String placeName, String address,
                  String contactNumber, Double xCoordinate, Double yCoordinate, String kakaoPlaceUrl) {
@@ -58,5 +70,6 @@ public class Place extends BaseTimeEntity {
         this.xCoordinate = xCoordinate;
         this.yCoordinate = yCoordinate;
         this.kakaoPlaceUrl = kakaoPlaceUrl;
+        this.status = PlaceStatus.APPROVED;
     }
 }
