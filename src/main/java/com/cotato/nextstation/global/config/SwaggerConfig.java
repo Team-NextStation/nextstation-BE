@@ -100,7 +100,7 @@ public class SwaggerConfig {
                 .group("Place")
                 .displayName("Place API")
                 .packagesToScan("com.cotato.nextstation.domain.place.controller")
-                .pathsToMatch("/api/v1/places/**")
+                .pathsToMatch("/api/v1/places/**", "/api/v1/admin/places/**")
                 .build();
     }
 
