@@ -17,6 +17,23 @@ public record AdminPlaceDetailResponse(
 
         Long stationId,
         String stationName,
+
+        @Schema(description = "장소 주소", example = "서울 용산구 남영동 72-1")
+        String address,
+
+        @Schema(description = "X 좌표(경도)", example = "126.972123")
+        Double xCoordinate,
+
+        @Schema(description = "Y 좌표(위도)", example = "37.544321")
+        Double yCoordinate,
+
+        @Schema(
+                description = "카카오맵 장소 URL",
+                example = "https://place.map.kakao.com/123456789",
+                nullable = true
+        )
+        String kakaoPlaceUrl,
+
         PlaceStatus status,
         String categoryCode,
         String categoryName,

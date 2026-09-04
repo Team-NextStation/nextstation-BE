@@ -138,7 +138,10 @@ class AdminPlaceControllerTest {
     void getPlaceDetail_deletedPlace() throws Exception {
         given(adminPlaceQueryService.getPlaceDetail(1L, 7L)).willReturn(
                 new AdminPlaceDetailResponse(
-                        7L, "삭제 장소", null, 10L, "신림역", PlaceStatus.DELETED,
+                        7L, "삭제 장소", null, 10L, "신림역",
+                        "서울 용산구 남영동 72-1", 126.972123, 37.544321,
+                        "https://place.map.kakao.com/123456789",
+                        PlaceStatus.DELETED,
                         "CAFE", "카페", List.of("INDOOR"), "설명", List.of(),
                         "폐업", null));
 
@@ -146,6 +149,11 @@ class AdminPlaceControllerTest {
                         .header("Authorization", "Bearer " + TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DELETED"))
+                .andExpect(jsonPath("$.data.address").value("서울 용산구 남영동 72-1"))
+                .andExpect(jsonPath("$.data.xCoordinate").value(126.972123))
+                .andExpect(jsonPath("$.data.yCoordinate").value(37.544321))
+                .andExpect(jsonPath("$.data.kakaoPlaceUrl")
+                        .value("https://place.map.kakao.com/123456789"))
                 .andExpect(jsonPath("$.data.deleteReason").value("폐업"))
                 .andExpect(jsonPath("$.data.rejectReason").isEmpty());
     }

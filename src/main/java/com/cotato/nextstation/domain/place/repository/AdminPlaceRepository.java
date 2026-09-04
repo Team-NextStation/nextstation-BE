@@ -88,6 +88,10 @@ public interface AdminPlaceRepository extends Repository<Place, Long> {
                    p.status AS status,
                    p.delete_reason AS deleteReason,
                    p.reject_reason AS rejectReason,
+                   p.address AS address,
+                   p.x_coordinate AS xCoordinate,
+                   p.y_coordinate AS yCoordinate,
+                   p.kakao_place_url AS kakaoPlaceUrl,
                    s.id AS stationId,
                    s.station_name AS stationName,
                    l.id AS lineId,
@@ -136,6 +140,10 @@ public interface AdminPlaceRepository extends Repository<Place, Long> {
     }
 
     interface AdminPlaceDetailView extends AdminPlaceView {
+        String getAddress();
+        Double getXCoordinate();
+        Double getYCoordinate();
+        String getKakaoPlaceUrl();
         String getDeleteReason();
         String getRejectReason();
     }
