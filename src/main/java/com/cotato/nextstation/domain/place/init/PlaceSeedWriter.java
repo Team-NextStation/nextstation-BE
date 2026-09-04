@@ -105,7 +105,7 @@ class PlaceSeedWriter {
                             .contactNumber(row.contactNumber())
                             .xCoordinate(row.xCoordinate())
                             .yCoordinate(row.yCoordinate())
-                            .kakaoPlaceUrl(row.kakaoPlaceUrl())
+                            .kakaoPlaceId(row.kakaoPlaceId())
                             .build()
             );
             placeCount++;
