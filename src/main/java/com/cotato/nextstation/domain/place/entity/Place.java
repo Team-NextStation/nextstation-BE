@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -17,7 +18,13 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
-@Table(name = "place")
+@Table(
+        name = "place",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_place_station_kakao",
+                columnNames = {"station_id", "kakao_place_id"}
+        )
+)
 @SQLRestriction("status = 'APPROVED'")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -48,8 +55,8 @@ public class Place extends BaseTimeEntity {
     @Column(name = "y_coordinate", nullable = false)
     private Double yCoordinate;
 
-    @Column(name = "kakao_place_url")
-    private String kakaoPlaceUrl;
+    @Column(name = "kakao_place_id", nullable = false, length = 20)
+    private String kakaoPlaceId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -60,7 +67,7 @@ public class Place extends BaseTimeEntity {
 
     @Builder
     public Place(Long stationId,  Category category, String description, String placeName, String address,
-                 String contactNumber, Double xCoordinate, Double yCoordinate, String kakaoPlaceUrl) {
+                 String contactNumber, Double xCoordinate, Double yCoordinate, String kakaoPlaceId) {
         this.stationId = stationId;
         this.category = category;
         this.description = description;
@@ -69,7 +76,7 @@ public class Place extends BaseTimeEntity {
         this.contactNumber = contactNumber;
         this.xCoordinate = xCoordinate;
         this.yCoordinate = yCoordinate;
-        this.kakaoPlaceUrl = kakaoPlaceUrl;
+        this.kakaoPlaceId = kakaoPlaceId;
         this.status = PlaceStatus.APPROVED;
     }
 }
