@@ -15,6 +15,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -60,7 +62,8 @@ public class AdminPlaceController {
             @Parameter(description = "카테고리 코드") @RequestParam(required = false) CategoryCode categoryCode,
             @Parameter(description = "장소 등록 상태") @RequestParam(required = false) PlaceStatus status,
             @Parameter(description = "다음 페이지 커서") @RequestParam(required = false) String cursor,
-            @Parameter(description = "페이지 크기 (1~50, 기본 10)") @RequestParam(required = false) Integer size) {
+            @Parameter(description = "페이지 크기 (1~50, 기본 10)")
+            @RequestParam(required = false) @Min(1) @Max(50) Integer size) {
         return CommonResponse.success(adminPlaceQueryService.getPlaces(
                 principal.memberId(), lineId, stationId, categoryCode, status, cursor, size));
     }

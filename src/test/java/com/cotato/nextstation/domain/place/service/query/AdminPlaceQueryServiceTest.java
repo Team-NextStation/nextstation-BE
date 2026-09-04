@@ -93,6 +93,34 @@ class AdminPlaceQueryServiceTest {
     }
 
     @Test
+    @DisplayName("다음 페이지는 커서의 장소명과 ID를 전달해 같은 이름의 장소를 이어서 조회한다")
+    void getPlaces_afterCursorUsesPlaceNameAndIdTieBreaker() {
+        AdminPlaceView first = placeView(1L, "같은 장소");
+        AdminPlaceView extra = placeView(2L, "같은 장소");
+        AdminPlaceView afterExtra = mock(AdminPlaceView.class);
+        given(adminPlaceRepository.findAdminPlaces(
+                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), any(Pageable.class)))
+                .willReturn(List.of(first, extra));
+        given(adminPlaceRepository.findAdminPlaces(
+                eq(null), eq(null), eq(null), eq(null),
+                eq("같은 장소"), eq(1L), any(Pageable.class)))
+                .willReturn(List.of(extra, afterExtra));
+        given(adminPlaceRepository.findAdminAvailableLines()).willReturn(List.of());
+
+        AdminPlaceListResponse firstPage = adminPlaceQueryService.getPlaces(
+                ADMIN_ID, null, null, null, null, null, 1);
+        AdminPlaceListResponse secondPage = adminPlaceQueryService.getPlaces(
+                ADMIN_ID, null, null, null, null, firstPage.nextCursor(), 1);
+
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(secondPage.hasNext()).isTrue();
+        verify(adminPlaceRepository).findAdminPlaces(
+                eq(null), eq(null), eq(null), eq(null),
+                eq("같은 장소"), eq(1L), any(Pageable.class));
+    }
+
+    @Test
     @DisplayName("빈 검색어는 관리자 검증 후 조회 쿼리 없이 빈 목록을 반환한다")
     void searchPlaces_blankKeywordReturnsEmpty() {
         List<AdminPlaceCardResponse> response = adminPlaceQueryService.searchPlaces(ADMIN_ID, "   ");

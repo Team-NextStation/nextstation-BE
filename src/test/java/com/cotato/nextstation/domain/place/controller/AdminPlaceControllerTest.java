@@ -17,6 +17,8 @@ import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -83,6 +85,41 @@ class AdminPlaceControllerTest {
                 .andExpect(jsonPath("$.data.places[0].representativeLine.code").value("LINE_3"))
                 .andExpect(jsonPath("$.data.places[0].tags[1]").value("BUDGET"))
                 .andExpect(jsonPath("$.data.places[0].status").value("APPROVED"));
+    }
+
+    @Test
+    @DisplayName("관리자 장소 목록은 커서를 서비스에 전달하고 다음 커서 정보를 반환한다")
+    void getPlaces_withCursor() throws Exception {
+        String cursor = "current-cursor";
+        String nextCursor = "next-cursor";
+        given(adminPlaceQueryService.getPlaces(
+                1L, null, null, null, null, cursor, 2))
+                .willReturn(new AdminPlaceListResponse(
+                        List.of(), List.of(), List.of(), nextCursor, true));
+
+        mockMvc.perform(get("/api/v1/admin/places")
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .param("cursor", cursor)
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nextCursor").value(nextCursor))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+
+        verify(adminPlaceQueryService).getPlaces(
+                1L, null, null, null, null, cursor, 2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "51"})
+    @DisplayName("페이지 크기가 1~50 범위를 벗어나면 서비스 호출 없이 400을 반환한다")
+    void getPlaces_invalidSize(String size) throws Exception {
+        mockMvc.perform(get("/api/v1/admin/places")
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .param("size", size))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(GlobalErrorCode.VALIDATION_ERROR.getCode()));
+
+        verify(adminPlaceQueryService, never()).getPlaces(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
