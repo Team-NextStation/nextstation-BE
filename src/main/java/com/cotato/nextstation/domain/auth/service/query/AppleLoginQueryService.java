@@ -68,10 +68,14 @@ public class AppleLoginQueryService {
         // Apple 인증을 통과한 것 자체가 본인 확인이므로, 유예 기간이 남아있으면 그대로 복구한다.
         // 이 클래스는 트랜잭션이 없어 dirty checking이 동작하지 않으므로 쓰기는 커맨드 서비스에 위임한다.
         MemberStatus status = member.getStatus();
-        boolean restored = member.isRestorable();
-        if (restored) {
+        boolean restored = false;
+        if (member.isRestorable()) {
+            MemberStatus statusBeforeRestore = status;
             status = memberCommandService.restore(member.getId());
-            log.info("탈퇴 유예 기간 내 Apple 재로그인으로 계정 복구: memberId={}, restoredStatus={}", member.getId(), status);
+            // 동시 복구 요청 경쟁에서 밀리면 restore()가 복구 없이 기존 status를 그대로 반환하므로,
+            // 실제로 상태가 바뀐 경우에만 restored=true로 응답한다.
+            restored = status != statusBeforeRestore;
+            log.info("탈퇴 유예 기간 내 Apple 재로그인으로 계정 복구: memberId={}, restoredStatus={}, restored={}", member.getId(), status, restored);
         }
 
         if (status == MemberStatus.PENDING) {
