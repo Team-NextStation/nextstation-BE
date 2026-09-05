@@ -57,7 +57,9 @@ public class AppleSignupCommandService {
 
         termsAgreementValidator.validate(agreedTermsIds);
 
-        String email = appleClaims.email().isBlank() ? null : appleClaims.email();
+        // 정상 발급 경로(issueAppleSignupToken)는 항상 빈 문자열로 채워 email이 null일 수 없지만,
+        // 그 불변식이 깨지는 상황(발급 경로 변경 등)에도 NPE 대신 안전하게 null로 처리한다.
+        String email = (appleClaims.email() == null || appleClaims.email().isBlank()) ? null : appleClaims.email();
 
         // Apple 인증 이메일이 기존 로컬(이메일/비밀번호) 계정과 겹치는 경우, 계정 연동은 아직 미지원이라 명확한 에러로 막는다.
         if (email != null && memberRepository.existsByEmail(email)) {
