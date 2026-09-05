@@ -93,8 +93,10 @@ public class AdminPlaceController {
             summary = "관리자 장소 상세 조회",
             description = """
                     APPROVED, PENDING, REJECTED, DELETED 상태를 구분하지 않고 장소 상세를 조회한다.
-                    장소 주소, X 좌표(경도), Y 좌표(위도), 카카오맵 URL을 함께 제공한다.
-                    실제 장소 사진을 노출 순서대로 제공하며, 삭제·반려 장소는 각각의 사유를 함께 반환한다.
+                    - 장소명, 대표 노선, 역명, 등록 상태, 카테고리, 해시태그, 한 줄 설명을 제공한다.
+                    - 주소, X 좌표(경도), Y 좌표(위도), 카카오맵 URL은 읽기 전용 정보로 제공한다.
+                    - 실제 장소 사진을 노출 순서대로 제공한다.
+                    - 삭제·반려 장소는 각각의 사유를 함께 반환한다.
                     """)
     @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
