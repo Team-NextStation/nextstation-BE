@@ -65,6 +65,9 @@ public class Place extends BaseTimeEntity {
     @Column(name = "delete_reason", length = 255)
     private String deleteReason;
 
+    @Column(name = "reject_reason", length = 255)
+    private String rejectReason;
+
     @Builder
     public Place(Long stationId,  Category category, String description, String placeName, String address,
                  String contactNumber, Double xCoordinate, Double yCoordinate, String kakaoPlaceId) {

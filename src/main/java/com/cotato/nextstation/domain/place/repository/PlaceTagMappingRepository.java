@@ -27,4 +27,18 @@ public interface PlaceTagMappingRepository extends JpaRepository<PlaceTagMapping
 
     @EntityGraph(attributePaths = {"place", "placeTag"})
     List<PlaceTagMapping> findByPlaceTagNameIn(List<PlaceTagName> tagNames);
+
+    @Query(value = """
+            SELECT ptm.place_id AS placeId, pt.name AS tagName
+            FROM place_tag_mapping ptm
+            JOIN place_tag pt ON pt.id = ptm.place_tag_id
+            WHERE ptm.place_id IN (:placeIds)
+            ORDER BY ptm.place_id, ptm.id
+            """, nativeQuery = true)
+    List<AdminPlaceTagView> findAdminTags(@Param("placeIds") List<Long> placeIds);
+
+    interface AdminPlaceTagView {
+        Long getPlaceId();
+        String getTagName();
+    }
 }
