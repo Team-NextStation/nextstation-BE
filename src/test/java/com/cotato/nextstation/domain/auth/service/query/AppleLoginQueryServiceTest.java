@@ -11,6 +11,7 @@ import com.cotato.nextstation.domain.auth.util.AppleSignupTokenClaims;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
 import com.cotato.nextstation.domain.member.entity.Gender;
 import com.cotato.nextstation.domain.member.entity.Member;
+import com.cotato.nextstation.domain.member.entity.MemberRole;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
@@ -186,6 +187,7 @@ class AppleLoginQueryServiceTest {
         assertThat(result.memberId()).isEqualTo(1L);
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
+        assertThat(result.role()).isEqualTo(MemberRole.USER);
     }
 
     @Test

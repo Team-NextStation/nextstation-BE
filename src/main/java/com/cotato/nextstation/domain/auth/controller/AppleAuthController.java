@@ -72,7 +72,8 @@ public class AppleAuthController {
                 result.accessToken(),
                 result.signupToken(),
                 result.appleSignupToken(),
-                result.restored()
+                result.restored(),
+                result.role()
         );
         return CommonResponse.success(response);
     }

@@ -91,7 +91,7 @@ public class AppleLoginQueryService {
         IssuedTokens tokens = authTokenIssuer.issue(member.getId());
 
         return new AppleLoginResult(AppleLoginResultType.LOGIN_SUCCESS, member.getId(), tokens.accessToken(), tokens.refreshToken(),
-                null, null, restored);
+                null, null, restored, member.getRole());
     }
 
     private AppleLoginResult issueAppleSignupToken(String providerUserId, AppleIdentityToken appleIdentityToken) {
@@ -105,7 +105,7 @@ public class AppleLoginQueryService {
         String appleSignupToken = jwtProvider.generateToken(providerUserId, claims, APPLE_SIGNUP_TOKEN_EXPIRATION);
 
         return new AppleLoginResult(AppleLoginResultType.NEW_MEMBER, null, null, null,
-                null, appleSignupToken, false);
+                null, appleSignupToken, false, null);
     }
 
     private AppleLoginResult reissueSignupTokenForPendingMember(Member member, boolean restored) {
@@ -116,7 +116,7 @@ public class AppleLoginQueryService {
                 SIGNUP_TOKEN_EXPIRATION
         );
         return new AppleLoginResult(AppleLoginResultType.PENDING_PROFILE, member.getId(), null, null,
-                signupToken, null, restored);
+                signupToken, null, restored, null);
     }
 
     private String orEmpty(String value) {
