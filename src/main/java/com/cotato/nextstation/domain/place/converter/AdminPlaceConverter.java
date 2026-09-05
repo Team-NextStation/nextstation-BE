@@ -44,7 +44,7 @@ public class AdminPlaceConverter {
                 place.getAddress(),
                 place.getXCoordinate(),
                 place.getYCoordinate(),
-                place.getKakaoPlaceUrl(),
+                PlaceConverter.toKakaoPlaceUrl(place.getKakaoPlaceId()),
                 PlaceStatus.valueOf(place.getStatus()),
                 place.getCategoryCode(),
                 place.getCategoryName(),

@@ -34,7 +34,7 @@ class AdminPlaceConverterTest {
         given(place.getAddress()).willReturn("서울 용산구 남영동 72-1");
         given(place.getXCoordinate()).willReturn(126.972123);
         given(place.getYCoordinate()).willReturn(37.544321);
-        given(place.getKakaoPlaceUrl()).willReturn("https://place.map.kakao.com/123456789");
+        given(place.getKakaoPlaceId()).willReturn("123456789");
 
         AdminPlaceDetailResponse response = adminPlaceConverter.toDetailResponse(
                 place, List.of("INDOOR"), List.of("image-url"));

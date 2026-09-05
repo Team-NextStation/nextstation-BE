@@ -91,7 +91,7 @@ public interface AdminPlaceRepository extends Repository<Place, Long> {
                    p.address AS address,
                    p.x_coordinate AS xCoordinate,
                    p.y_coordinate AS yCoordinate,
-                   p.kakao_place_url AS kakaoPlaceUrl,
+                   p.kakao_place_id AS kakaoPlaceId,
                    s.id AS stationId,
                    s.station_name AS stationName,
                    l.id AS lineId,
@@ -143,7 +143,7 @@ public interface AdminPlaceRepository extends Repository<Place, Long> {
         String getAddress();
         Double getXCoordinate();
         Double getYCoordinate();
-        String getKakaoPlaceUrl();
+        String getKakaoPlaceId();
         String getDeleteReason();
         String getRejectReason();
     }

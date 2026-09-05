@@ -19,7 +19,6 @@ import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository.AdminPlaceTagView;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import com.cotato.nextstation.global.exception.CustomException;
-import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -36,7 +35,6 @@ import java.util.stream.Collectors;
 public class AdminPlaceQueryService {
 
     private static final int DEFAULT_SIZE = 10;
-    private static final int MAX_SIZE = 50;
     private static final int SEARCH_LIMIT = 20;
     private static final String LIKE_ESCAPE = "!";
 
@@ -134,13 +132,7 @@ public class AdminPlaceQueryService {
     }
 
     private int resolvePageSize(Integer size) {
-        if (size == null) {
-            return DEFAULT_SIZE;
-        }
-        if (size < 1 || size > MAX_SIZE) {
-            throw new CustomException(GlobalErrorCode.INVALID_PAGE_SIZE);
-        }
-        return size;
+        return size == null ? DEFAULT_SIZE : size;
     }
 
     private String escapeLikePattern(String keyword) {
