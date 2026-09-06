@@ -44,9 +44,9 @@ public class AppleLoginQueryService {
     private final MemberCommandService memberCommandService;
 
     // identity token 검증 후 신규/PENDING/기존 회원 3분기 판별, Member 생성은 여기서 하지 않는다(AppleSignupCommandService 담당)
-    public AppleLoginResult login(String identityToken) {
+    public AppleLoginResult login(String identityToken, String nonce) {
 
-        AppleIdentityToken appleIdentityToken = appleOAuthClient.verify(identityToken);
+        AppleIdentityToken appleIdentityToken = appleOAuthClient.verify(identityToken, nonce);
         String providerUserId = appleIdentityToken.providerUserId();
 
         Optional<MemberSocialAccount> socialAccount =

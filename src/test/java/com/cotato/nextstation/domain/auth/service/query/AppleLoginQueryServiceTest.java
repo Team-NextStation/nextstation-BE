@@ -67,6 +67,7 @@ class AppleLoginQueryServiceTest {
     private MemberCommandService memberCommandService;
 
     private static final String IDENTITY_TOKEN = "identity-token";
+    private static final String NONCE = "raw-nonce";
     private static final String PROVIDER_USER_ID = "000555.abcdef1234567890.0555";
 
     private AppleIdentityToken identityTokenWithEmail() {
@@ -111,14 +112,14 @@ class AppleLoginQueryServiceTest {
     @DisplayName("처음 보는 Apple 계정이면 Member를 만들지 않고 appleSignupToken을 발급한다")
     void login_newMember() {
         // given
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.empty());
         given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
                 .willReturn("apple-signup-token");
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.NEW_MEMBER);
@@ -131,14 +132,14 @@ class AppleLoginQueryServiceTest {
     @DisplayName("email이 없는(재인증 등으로 클레임이 비어있는) 신규 회원이어도 NPE 없이 appleSignupToken을 발급한다")
     void login_newMember_noEmail() {
         // given
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithoutEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithoutEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.empty());
         given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
                 .willReturn("apple-signup-token");
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.NEW_MEMBER);
@@ -153,7 +154,7 @@ class AppleLoginQueryServiceTest {
     @DisplayName("프로필 설정이 끝나지 않은(PENDING) Apple 회원이 재로그인하면 signupToken을 재발급한다")
     void login_pendingMember() {
         // given
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.of(socialAccount(1L)));
         given(memberRepository.findById(1L)).willReturn(Optional.of(pendingMember()));
@@ -161,7 +162,7 @@ class AppleLoginQueryServiceTest {
                 .willReturn("reissued-signup-token");
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.PENDING_PROFILE);
@@ -173,14 +174,14 @@ class AppleLoginQueryServiceTest {
     @DisplayName("ACTIVE Apple 회원이 로그인하면 access token과 refresh token을 발급한다")
     void login_activeMember_loginSuccess() {
         // given
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.of(socialAccount(1L)));
         given(memberRepository.findById(1L)).willReturn(Optional.of(activeMember()));
         given(authTokenIssuer.issue(1L)).willReturn(new IssuedTokens("access-token", "refresh-token"));
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.LOGIN_SUCCESS);
@@ -194,13 +195,13 @@ class AppleLoginQueryServiceTest {
     @DisplayName("유예 기간이 지난 탈퇴 회원이면 복구하지 않고 예외가 발생한다")
     void login_memberNotActive() {
         // given - 8일 전 탈퇴 (유예 7일 경과)
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.of(socialAccount(1L)));
         given(memberRepository.findById(1L)).willReturn(Optional.of(withdrawnMember(LocalDateTime.now().minusDays(8))));
 
         // when & then
-        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN))
+        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN, NONCE))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.APPLE_MEMBER_NOT_ACTIVE.getMessage());
 
@@ -211,7 +212,7 @@ class AppleLoginQueryServiceTest {
     @DisplayName("유예 기간이 남은 탈퇴 회원이 Apple로 로그인하면 계정을 복구하고 토큰을 발급한다")
     void login_restoresWithdrawnMemberWithinGracePeriod() {
         // given - 3일 전 탈퇴
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.of(socialAccount(1L)));
         given(memberRepository.findById(1L)).willReturn(Optional.of(withdrawnMember(LocalDateTime.now().minusDays(3))));
@@ -219,7 +220,7 @@ class AppleLoginQueryServiceTest {
         given(authTokenIssuer.issue(1L)).willReturn(new IssuedTokens("access-token", "refresh-token"));
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.LOGIN_SUCCESS);
@@ -231,13 +232,13 @@ class AppleLoginQueryServiceTest {
     @DisplayName("member_social_account는 있는데 member가 없으면(데이터 정합성 오류) 예외가 발생한다")
     void login_memberNotFound_dataIntegrityError() {
         // given
-        given(appleOAuthClient.verify(IDENTITY_TOKEN)).willReturn(identityTokenWithEmail());
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.of(socialAccount(999L)));
         given(memberRepository.findById(999L)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN))
+        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN, NONCE))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.MEMBER_NOT_FOUND.getMessage());
     }

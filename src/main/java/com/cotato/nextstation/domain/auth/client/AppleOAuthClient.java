@@ -21,9 +21,13 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,13 +36,14 @@ import java.util.stream.Collectors;
 
 // Apple identity token(iOS 네이티브 Sign In with Apple이 발급한 JWT) 검증 전용 클라이언트.
 // 카카오와 달리 토큰교환/사용자정보조회 API를 호출하지 않는다 - identity token은 클라이언트가 이미 들고 있고,
-// 우리는 Apple JWKS로 서명(RS256)과 iss/aud/exp 클레임만 검증한다.
+// 우리는 Apple JWKS로 서명(RS256)과 iss/aud/exp/nonce 클레임을 검증한다.
 @Slf4j
 @Component
 public class AppleOAuthClient {
 
     private static final String JWKS_URI = "https://appleid.apple.com/auth/keys";
     private static final String ISSUER = "https://appleid.apple.com";
+    private static final String NONCE_HASH_ALGORITHM = "SHA-256";
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
@@ -77,8 +82,10 @@ public class AppleOAuthClient {
         this.allowedAudiences = Set.copyOf(allowedAudiences);
     }
 
-    // 서명(RS256) + iss/aud/exp 검증까지 통과한 claims에서 우리가 쓰는 값만 추려 반환한다. 위변조·만료 토큰은 CustomException(401)으로 거부된다.
-    public AppleIdentityToken verify(String identityToken) {
+    // 서명(RS256) + iss/aud/exp/nonce 검증까지 통과한 claims에서 우리가 쓰는 값만 추려 반환한다. 위변조·만료·재전송(replay) 토큰은 CustomException(401)으로 거부된다.
+    // nonce는 클라이언트(iOS)가 ASAuthorizationAppleIDRequest.nonce에 넣은 값의 원문(raw)이다 -> 탈취된 identity token을 그대로
+    // 재전송하는 공격을 막기 위해, 그 원문을 SHA-256 해싱한 값이 토큰 안의 nonce 클레임과 일치하는지 확인한다.
+    public AppleIdentityToken verify(String identityToken, String nonce) {
 
         Claims claims;
         try {
@@ -102,7 +109,24 @@ public class AppleOAuthClient {
             throw new CustomException(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN);
         }
 
+        String expectedNonce = claims.get("nonce", String.class);
+        if (expectedNonce == null || !expectedNonce.equalsIgnoreCase(hashNonce(nonce))) {
+            log.warn("nonce가 일치하지 않는 Apple identity token(재전송 의심)");
+            throw new CustomException(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN);
+        }
+
         return AppleIdentityToken.from(claims);
+    }
+
+    private String hashNonce(String nonce) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance(NONCE_HASH_ALGORITHM);
+            byte[] hashed = digest.digest(nonce.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hashed);
+        } catch (NoSuchAlgorithmException e) {
+            // 표준 JDK가 SHA-256을 지원 안 하는 환경은 없다고 가정한다 - 발생하면 배포 환경 자체가 이상한 것.
+            throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다.", e);
+        }
     }
 
     private Key locateKey(Header header) {

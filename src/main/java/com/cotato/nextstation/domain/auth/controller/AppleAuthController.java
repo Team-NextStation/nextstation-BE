@@ -43,6 +43,8 @@ public class AppleAuthController {
             description = """
                     iOS 네이티브 Sign In with Apple SDK가 발급한 identity token을 검증해 신규/기존 회원을 판별한다.
                     카카오와 달리 인가코드 교환이나 별도의 사용자정보조회 API 호출이 없다 - identity token 자체에 서명·클레임 검증을 수행한다.
+                    - `nonce`는 클라이언트가 `ASAuthorizationAppleIDRequest.nonce`에 사용한 원문(raw) 값이다. 서버가 SHA-256으로 해싱해
+                      identityToken의 `nonce` 클레임과 대조하므로, 탈취된 identity token을 재전송해도 로그인에 성공할 수 없다.
                     - `resultType=LOGIN_SUCCESS`: 기존 ACTIVE 회원. accessToken은 응답 body로, refreshToken은 httpOnly 쿠키로 내려간다(로그인 API와 동일).
                     - `resultType=PENDING_PROFILE`: 프로필 설정이 끝나지 않은 회원. `signupToken`이 발급되며, 이후 흐름은 회원가입의 `/profile` 호출과 동일하다.
                     - `resultType=NEW_MEMBER`: 처음 보는 Apple 계정. `appleSignupToken`이 발급된다. 이 값을 들고 약관 동의 화면을 보여준 뒤 `/apple/signup`을 호출해야 한다.
@@ -51,7 +53,7 @@ public class AppleAuthController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "판별 성공 (resultType으로 분기)"),
             @ApiResponse(responseCode = "400", description = "요청 값 검증 실패 (`GlobalErrorCode.VALIDATION_ERROR`)"),
-            @ApiResponse(responseCode = "401", description = "유효하지 않거나 만료된 identity token (`AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN`, `AuthErrorCode.APPLE_IDENTITY_TOKEN_EXPIRED`)"),
+            @ApiResponse(responseCode = "401", description = "유효하지 않거나 만료된 identity token, 또는 nonce 불일치 (`AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN`, `AuthErrorCode.APPLE_IDENTITY_TOKEN_EXPIRED`)"),
             @ApiResponse(responseCode = "403", description = "이용이 제한된 계정 (`AuthErrorCode.APPLE_MEMBER_NOT_ACTIVE`)"),
             @ApiResponse(responseCode = "404", description = "존재하지 않는 회원 (`AuthErrorCode.MEMBER_NOT_FOUND`)"),
             @ApiResponse(responseCode = "502", description = "Apple 서버(JWKS) 통신 오류 (`GlobalErrorCode.EXTERNAL_API_ERROR`)"),
@@ -59,7 +61,7 @@ public class AppleAuthController {
     @PostMapping("/login")
     public CommonResponse<AppleLoginResponse> appleLogin(@Valid @RequestBody AppleLoginRequest request,
                                                            HttpServletResponse httpResponse) {
-        AppleLoginResult result = appleLoginQueryService.login(request.identityToken());
+        AppleLoginResult result = appleLoginQueryService.login(request.identityToken(), request.nonce());
 
         if (result.resultType() == AppleLoginResultType.LOGIN_SUCCESS) {
             ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
