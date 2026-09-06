@@ -6,7 +6,9 @@ import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminStationSummaryResponse;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
+import com.cotato.nextstation.domain.place.service.command.AdminPlaceCommandService;
 import com.cotato.nextstation.domain.place.service.query.AdminPlaceQueryService;
+import com.cotato.nextstation.domain.place.service.query.KakaoPlaceSearchService;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import com.cotato.nextstation.domain.station.entity.LineCode;
 import com.cotato.nextstation.global.exception.CustomException;
@@ -49,6 +51,12 @@ class AdminPlaceControllerTest {
 
     @MockitoBean
     private AdminPlaceQueryService adminPlaceQueryService;
+
+    @MockitoBean
+    private KakaoPlaceSearchService kakaoPlaceSearchService;
+
+    @MockitoBean
+    private AdminPlaceCommandService adminPlaceCommandService;
 
     @MockitoBean
     private JwtProvider jwtProvider;
