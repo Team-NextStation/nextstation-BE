@@ -103,7 +103,8 @@ public class AppleAuthController {
         SignupResponse response = appleSignupCommandService.signup(
                 request.appleSignupToken(),
                 request.agreedTermsIds(),
-                ClientIpResolver.resolve(httpRequest)
+                ClientIpResolver.resolve(httpRequest),
+                request.authorizationCode()
         );
         return CommonResponse.success(HttpStatus.CREATED, response);
     }
