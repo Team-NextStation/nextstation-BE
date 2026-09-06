@@ -30,7 +30,7 @@ public record PresignedUrlsRequest(
         @Schema(description = "카카오맵 장소 ID, folder가 STATIC_PLACE일 때만 필수", example = "8137464")
         String kakaoPlaceId,
 
-        @Schema(description = "원본 파일명(확장자 포함) 목록. 최대 10개", example = "profile.jpg")
+        @Schema(description = "원본 파일명(확장자 포함) 목록. 최대 15개", example = "profile.jpg")
         @NotEmpty(message = "fileNames는 최소 1개 이상이어야 합니다.")
         @Size(max = 15, message = "한 번에 최대 15개까지 업로드할 수 있습니다.")
         List<@NotBlank String> fileNames
