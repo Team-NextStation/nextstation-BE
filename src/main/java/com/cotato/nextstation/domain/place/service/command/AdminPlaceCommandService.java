@@ -24,6 +24,7 @@ import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,29 +68,36 @@ public class AdminPlaceCommandService {
         request.safeImageUrls()
                 .forEach(url -> imageCommandService.validatePlaceImageUrl(url, request.kakaoPlaceId()));
 
-        Place place = placeRepository.save(
-                Place.builder()
-                        .stationId(request.stationId())
-                        .category(category)
-                        .description(request.description())
-                        .placeName(request.placeName())
-                        .address(request.address())
-                        .contactNumber(request.contactNumber())
-                        .xCoordinate(request.xCoordinate())
-                        .yCoordinate(request.yCoordinate())
-                        .kakaoPlaceId(request.kakaoPlaceId())
-                        .status(PlaceStatus.PENDING)
-                        .build()
-        );
+        Place place = savePlace(request, category);
 
         saveTagMappings(place, request.safeTagNames());
         saveImages(place, request.safeImageUrls());
 
-        log.info("장소 등록 완료: memberId={}, placeId={}, stationId={}, tagCount={}, imageCount={}",
-                memberId, place.getId(), request.stationId(),
-                request.safeTagNames().size(), request.safeImageUrls().size());
-
         return new AdminPlaceCreateResponse(place.getId(), place.getStatus());
+    }
+
+    // 동시 요청으로 uk_place_station_kakao에 걸리는 경우를 flush로 앞당겨 409로 변환한다.
+    private Place savePlace(AdminPlaceCreateRequest request, Category category) {
+        try {
+            return placeRepository.saveAndFlush(
+                    Place.builder()
+                            .stationId(request.stationId())
+                            .category(category)
+                            .description(request.description())
+                            .placeName(request.placeName())
+                            .address(request.address())
+                            .contactNumber(request.contactNumber())
+                            .xCoordinate(request.xCoordinate())
+                            .yCoordinate(request.yCoordinate())
+                            .kakaoPlaceId(request.kakaoPlaceId())
+                            .status(PlaceStatus.PENDING)
+                            .build()
+            );
+        } catch (DataIntegrityViolationException e) {
+            log.warn("동시 요청으로 중복 장소 등록 시도: stationId={}, kakaoPlaceId={}",
+                    request.stationId(), request.kakaoPlaceId(), e);
+            throw new CustomException(PlaceErrorCode.PLACE_ALREADY_REGISTERED);
+        }
     }
 
     private void saveTagMappings(Place place, List<PlaceTagName> tagNames) {

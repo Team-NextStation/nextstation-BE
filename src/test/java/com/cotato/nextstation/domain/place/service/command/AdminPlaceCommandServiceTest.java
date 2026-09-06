@@ -29,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -90,7 +91,7 @@ class AdminPlaceCommandServiceTest {
 
     // 저장 시 id가 채워진 Place를 돌려주도록 흉내낸다
     private void givenPlaceSaved() {
-        given(placeRepository.save(any(Place.class))).willAnswer(invocation -> {
+        given(placeRepository.saveAndFlush(any(Place.class))).willAnswer(invocation -> {
             Place place = invocation.getArgument(0);
             ReflectionTestUtils.setField(place, "id", PLACE_ID);
             return place;
@@ -113,7 +114,7 @@ class AdminPlaceCommandServiceTest {
                 adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of()));
 
         ArgumentCaptor<Place> captor = ArgumentCaptor.forClass(Place.class);
-        then(placeRepository).should().save(captor.capture());
+        then(placeRepository).should().saveAndFlush(captor.capture());
         Place saved = captor.getValue();
 
         assertThat(saved.getStatus()).isEqualTo(PlaceStatus.PENDING);
@@ -182,7 +183,7 @@ class AdminPlaceCommandServiceTest {
                 request(List.of(), List.of("https://evil.example.org/a.jpg"))))
                 .isInstanceOf(CustomException.class);
 
-        then(placeRepository).should(never()).save(any());
+        then(placeRepository).should(never()).saveAndFlush(any());
     }
 
     @Test
@@ -194,7 +195,7 @@ class AdminPlaceCommandServiceTest {
                 .isInstanceOf(CustomException.class)
                 .hasFieldOrPropertyWithValue("errorCode", StationErrorCode.STATION_NOT_FOUND);
 
-        then(placeRepository).should(never()).save(any());
+        then(placeRepository).should(never()).saveAndFlush(any());
     }
 
     @Test
@@ -207,7 +208,22 @@ class AdminPlaceCommandServiceTest {
                 .isInstanceOf(CustomException.class)
                 .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.PLACE_ALREADY_REGISTERED);
 
-        then(placeRepository).should(never()).save(any());
+        then(placeRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("중복 확인을 통과해도 유니크 제약에 걸리면 409로 바꾼다")
+    void createPlace_duplicateOnSave() {
+        givenStationAndCategoryExist();
+        given(placeRepository.saveAndFlush(any(Place.class)))
+                .willThrow(new DataIntegrityViolationException("uk_place_station_kakao"));
+
+        assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of())))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.PLACE_ALREADY_REGISTERED);
+
+        then(placeTagMappingRepository).shouldHaveNoInteractions();
+        then(placeImageRepository).shouldHaveNoInteractions();
     }
 
     @Test
@@ -219,6 +235,6 @@ class AdminPlaceCommandServiceTest {
                 .isInstanceOf(CustomException.class);
 
         then(stationRepository).shouldHaveNoInteractions();
-        then(placeRepository).should(never()).save(any());
+        then(placeRepository).should(never()).saveAndFlush(any());
     }
 }
