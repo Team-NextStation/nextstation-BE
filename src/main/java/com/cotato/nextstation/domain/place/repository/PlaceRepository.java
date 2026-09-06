@@ -15,4 +15,13 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     // 관리자 목록은 APPROVED 외 상태도 읽어야 하므로 place를 직접 조회해 제약을 우회한다.
     @Query(value = "SELECT * FROM place WHERE status = :status", nativeQuery = true)
     List<Place> findAllByStatusForAdmin(@Param("status") String status);
+
+    default boolean existsByStationAndKakaoPlaceIdForAdmin(Long stationId, String kakaoPlaceId) {
+        return countByStationAndKakaoPlaceIdForAdmin(stationId, kakaoPlaceId) > 0;
+    }
+
+    @Query(value = "SELECT COUNT(1) FROM place WHERE station_id = :stationId AND kakao_place_id = :kakaoPlaceId",
+            nativeQuery = true)
+    long countByStationAndKakaoPlaceIdForAdmin(@Param("stationId") Long stationId,
+                                               @Param("kakaoPlaceId") String kakaoPlaceId);
 }
