@@ -115,11 +115,11 @@ public class ImageCommandService {
         log.info("S3 이미지 삭제 완료: key={}", key);
     }
 
-    // 장소 사진 URL이 우리 버킷의 장소 업로드 경로인지 확인
-    public void validatePlaceImageUrl(String imageUrl) {
+    public void validatePlaceImageUrl(String imageUrl, String kakaoPlaceId) {
         String key = extractKeyFromImageUrl(imageUrl);
-        if (!key.startsWith(S3Folder.STATIC_PLACE.getPath() + "/")) {
-            log.warn("장소 사진 경로가 아닌 URL 요청: key={}", key);
+        String expectedPrefix = "%s/%s/".formatted(S3Folder.STATIC_PLACE.getPath(), kakaoPlaceId);
+        if (!key.startsWith(expectedPrefix)) {
+            log.warn("해당 장소의 사진 경로가 아닌 URL 요청: key={}, kakaoPlaceId={}", key, kakaoPlaceId);
             throw new CustomException(ImageErrorCode.INVALID_IMAGE_URL_FORMAT);
         }
     }

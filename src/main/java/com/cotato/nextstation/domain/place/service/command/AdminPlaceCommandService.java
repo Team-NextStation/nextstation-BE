@@ -64,7 +64,8 @@ public class AdminPlaceCommandService {
                     return new CustomException(GlobalErrorCode.INTERNAL_SERVER_ERROR);
                 });
 
-        request.safeImageUrls().forEach(imageCommandService::validatePlaceImageUrl);
+        request.safeImageUrls()
+                .forEach(url -> imageCommandService.validatePlaceImageUrl(url, request.kakaoPlaceId()));
 
         Place place = placeRepository.save(
                 Place.builder()
