@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PlaceConverter {
 
+    private static final String KAKAO_PLACE_URL_PREFIX = "https://place.map.kakao.com/";
+
     private final PlaceImageRepository placeImageRepository;
 
     // ===== 장소 상세 조회(PlaceDetailResponse)용 =====
@@ -38,11 +40,15 @@ public class PlaceConverter {
                 place.getCategory().getName(),
                 place.getAddress(),
                 place.getContactNumber(),
-                place.getKakaoPlaceUrl(),
+                toKakaoPlaceUrl(place.getKakaoPlaceId()),
                 totalReviewCount,
                 toImageUrls(place, placeImages),
                 toReviewPreviews(reviews, reviewImages)
         );
+    }
+
+    static String toKakaoPlaceUrl(String kakaoPlaceId) {
+        return KAKAO_PLACE_URL_PREFIX + kakaoPlaceId;
     }
 
     // 이미지가 없으면 카테고리 기본 이미지로 폴백

@@ -258,7 +258,7 @@ public class PlaceSeeder implements ApplicationRunner {
                         blankToNull(record.get("전화번호")),
                         Double.valueOf(xCoordText),
                         Double.valueOf(yCoordText),
-                        kakaoPlaceUrl,
+                        kakaoPlaceId,
                         images
                 ));
             }

@@ -150,4 +150,12 @@ class PlaceConverterTest {
         assertThat(response.reviews()).hasSize(1);
         assertThat(response.reviews().get(0).imageUrl()).isNull();
     }
+
+    @Test
+    @DisplayName("kakao_place_url 컬럼을 없앤 뒤로 상세 응답의 카카오맵 URL은 place id에서 조립한다")
+    void toKakaoPlaceUrlBuildsFromId() {
+        // 시트 원본에는 http/https가 섞여 있었으나 응답은 https로 통일한다.
+        assertThat(PlaceConverter.toKakaoPlaceUrl("1584284345"))
+                .isEqualTo("https://place.map.kakao.com/1584284345");
+    }
 }

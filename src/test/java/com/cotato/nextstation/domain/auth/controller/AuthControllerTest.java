@@ -20,6 +20,7 @@ import com.cotato.nextstation.domain.auth.service.result.LoginResult;
 import com.cotato.nextstation.domain.auth.service.result.ReissueResult;
 import com.cotato.nextstation.domain.auth.util.RefreshTokenCookieFactory;
 import com.cotato.nextstation.domain.member.entity.Gender;
+import com.cotato.nextstation.domain.member.entity.MemberRole;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.member.exception.NicknameErrorCode;
 import com.cotato.nextstation.global.exception.CustomException;
@@ -376,7 +377,7 @@ class AuthControllerTest {
     void login_success() throws Exception {
         LoginRequest request = new LoginRequest("user@example.com", "abc12345!");
         given(authTokenService.login("user@example.com", "abc12345!"))
-                .willReturn(new LoginResult(1L, "access-token", "refresh-token", false));
+                .willReturn(new LoginResult(1L, "access-token", "refresh-token", false, MemberRole.USER));
         given(refreshTokenCookieFactory.create("refresh-token"))
                 .willReturn(ResponseCookie.from("refreshToken", "refresh-token").httpOnly(true).build());
 
@@ -421,7 +422,7 @@ class AuthControllerTest {
     @DisplayName("유효한 refreshToken 쿠키가 있으면 200과 새 accessToken을 반환하고 refreshToken 쿠키를 rotate한다")
     void reissue_success() throws Exception {
         given(authTokenService.reissue("refresh-token"))
-                .willReturn(new ReissueResult(1L, "new-access-token", "new-refresh-token"));
+                .willReturn(new ReissueResult(1L, "new-access-token", "new-refresh-token", MemberRole.USER));
         given(refreshTokenCookieFactory.create("new-refresh-token"))
                 .willReturn(ResponseCookie.from("refreshToken", "new-refresh-token").httpOnly(true).build());
 

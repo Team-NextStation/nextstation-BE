@@ -89,6 +89,7 @@ class MemberQueryServiceTest {
         // then
         assertThat(response.provider()).isEqualTo("LOCAL");
         assertThat(response.email()).isEqualTo("user@example.com");
+        assertThat(response.birthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
     }
 
     @Test
@@ -112,6 +113,7 @@ class MemberQueryServiceTest {
 
         // then
         assertThat(response.provider()).isEqualTo("KAKAO");
+        assertThat(response.birthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
     }
 
     @Test

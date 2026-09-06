@@ -88,7 +88,7 @@ public class KakaoLoginQueryService {
         IssuedTokens tokens = authTokenIssuer.issue(member.getId());
 
         return new KakaoLoginResult(KakaoLoginResultType.LOGIN_SUCCESS, member.getId(), tokens.accessToken(), tokens.refreshToken(),
-                null, null, null, null, restored);
+                null, null, null, null, restored, member.getRole());
     }
 
     private KakaoLoginResult issueKakaoSignupToken(String providerUserId, KakaoUserInfoResponse userInfo) {
@@ -104,7 +104,7 @@ public class KakaoLoginQueryService {
         String kakaoSignupToken = jwtProvider.generateToken(providerUserId, claims, KAKAO_SIGNUP_TOKEN_EXPIRATION);
 
         return new KakaoLoginResult(KakaoLoginResultType.NEW_MEMBER, null, null, null,
-                null, kakaoSignupToken, userInfo.extractNickname(), userInfo.extractProfileImageUrl(), false);
+                null, kakaoSignupToken, userInfo.extractNickname(), userInfo.extractProfileImageUrl(), false, null);
     }
 
     private KakaoLoginResult reissueSignupTokenForPendingMember(Member member, boolean restored) {
@@ -115,7 +115,7 @@ public class KakaoLoginQueryService {
                 SIGNUP_TOKEN_EXPIRATION
         );
         return new KakaoLoginResult(KakaoLoginResultType.PENDING_PROFILE, member.getId(), null, null,
-                signupToken, null, null, null, restored);
+                signupToken, null, null, null, restored, null);
     }
 
     private String orEmpty(String value) {

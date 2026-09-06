@@ -203,7 +203,7 @@ public class AuthController {
         ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
 
-        return CommonResponse.success(new LoginResponse(result.memberId(), result.accessToken(), result.restored()));
+        return CommonResponse.success(new LoginResponse(result.memberId(), result.accessToken(), result.restored(), result.role()));
     }
 
     @Tag(name = "로그인")
@@ -240,7 +240,7 @@ public class AuthController {
         ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
 
-        return CommonResponse.success(new ReissueResponse(result.accessToken()));
+        return CommonResponse.success(new ReissueResponse(result.accessToken(), result.role()));
     }
 
     @Tag(name = "로그인")

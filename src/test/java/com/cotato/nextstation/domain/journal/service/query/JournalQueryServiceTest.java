@@ -317,15 +317,18 @@ class JournalQueryServiceTest {
             given(courseQueryService.isLikedByMember(COURSE_ID, null)).willReturn(false);
 
             // when
-            journalQueryService.getJournalDetail(null, JOURNAL_ID);
+            JournalDetailResponse response = journalQueryService.getJournalDetail(null, JOURNAL_ID);
 
             // then
+            assertThat(response.writerId()).isEqualTo(OWNER_ID);
+            assertThat(response.isMine()).isFalse();
+            assertThat(response.isLiked()).isFalse();
             verify(courseCommandService).increaseViewCount(COURSE_ID, null);
         }
 
         @Test
-        @DisplayName("타인이 비공개 일지를 조회하면 JOURNAL_FORBIDDEN 예외를 던지고 조회수 증가 호출은 나가지 않는다")
-        void otherMemberViewsPrivateJournal_throwsForbiddenAndNeverIncreasesViewCount() {
+        @DisplayName("타인이 비공개 일지를 조회하면 JOURNAL_NOT_FOUND를 던지고 조회수는 증가하지 않는다")
+        void otherMemberViewsPrivateJournal_throwsNotFoundAndNeverIncreasesViewCount() {
             // given: setUp의 journal은 공개 상태라, 이 테스트만 비공개로 재정의한다
             Journal privateJournal = Journal.builder()
                     .member(journal.getMember())
@@ -340,14 +343,36 @@ class JournalQueryServiceTest {
 
             // when & then: 권한 검증에서 막혀야 하고, 그 뒤에 있는 조회수 증가 호출까지 가면 안 된다
             assertThatThrownBy(() -> journalQueryService.getJournalDetail(OTHER_MEMBER_ID, JOURNAL_ID))
-                    .isInstanceOf(CustomException.class);
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
 
             verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
         }
 
         @Test
-        @DisplayName("타인이 탈퇴한 작성자의 공개 일지를 조회하면 JOURNAL_FORBIDDEN 예외를 던지고 조회수 증가 호출은 나가지 않는다")
-        void otherMemberViewsWithdrawnAuthorJournal_throwsForbiddenAndNeverIncreasesViewCount() {
+        @DisplayName("비로그인이 비공개 일지를 조회해도 JOURNAL_NOT_FOUND를 던진다")
+        void anonymousViewsPrivateJournal_throwsNotFound() {
+            Journal privateJournal = Journal.builder()
+                    .member(journal.getMember())
+                    .memberStampId(MEMBER_STAMP_ID)
+                    .title("보문 골목 산책")
+                    .traveledAt(LocalDate.of(2026, 7, 8))
+                    .travelDuration(TravelDuration.HALF_DAY)
+                    .isPublic(false)
+                    .build();
+            ReflectionTestUtils.setField(privateJournal, "id", JOURNAL_ID);
+            given(journalRepository.findById(JOURNAL_ID)).willReturn(Optional.of(privateJournal));
+
+            assertThatThrownBy(() -> journalQueryService.getJournalDetail(null, JOURNAL_ID))
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
+
+            verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("타인이 탈퇴한 작성자의 공개 일지를 조회하면 JOURNAL_NOT_FOUND를 던진다")
+        void otherMemberViewsWithdrawnAuthorJournal_throwsNotFoundAndNeverIncreasesViewCount() {
             // given: 탈퇴는 soft delete라 journal 행과 작성자(member) 행은 남아 있지만, 재가입 시
             // 과거 콘텐츠가 다시 노출되지 않도록 타인 조회는 막는다. isPublic 여부와 무관하게 막혀야 한다.
             given(journal.getMember().getStatus()).willReturn(MemberStatus.WITHDRAWN);
@@ -355,7 +380,7 @@ class JournalQueryServiceTest {
             // when & then
             assertThatThrownBy(() -> journalQueryService.getJournalDetail(OTHER_MEMBER_ID, JOURNAL_ID))
                     .isInstanceOf(CustomException.class)
-                    .hasMessageContaining(JournalErrorCode.JOURNAL_FORBIDDEN.getMessage());
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
 
             verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
         }

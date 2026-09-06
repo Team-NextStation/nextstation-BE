@@ -47,7 +47,7 @@ docker compose -f docker-compose-local.yml down
 ```
 
 ## 배포 주소
-🔗 [nextstation.kr](www.nextstation.kr)
+🔗 [nextstation.kr](https://www.nextstation.kr/)
 
 ## Contact
 📧 [Gmail](mailto:team.nextstation@gmail.com)

@@ -114,15 +114,26 @@ public class JournalController {
         return CommonResponse.success(null);
     }
 
-    @Operation(summary = "여행일지 상세 조회")
+    @Operation(
+            summary = "여행일지 상세 조회",
+            description = """
+                    공개 여행일지의 상세를 조회한다.
+                    - accessToken은 선택이다. 비로그인이면 `isMine`·`isLiked`는 false다.
+                    - 작성자 닉네임과 프로필 이미지는 비로그인에게도 노출된다.
+                    - 비공개 일지는 작성자 본인만 조회할 수 있고, 타인에게는 존재 여부를 숨기기 위해 404를 반환한다.
+                    - 토큰을 보냈는데 만료되었거나 위변조된 경우는 401이다.
+                    - 비로그인 조회도 기존 정책대로 조회수에 반영된다.
+                    """
+    )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
             @ApiResponse(responseCode = "404", description = "존재하지 않는 여행일지"),
     })
     @SecurityRequirement(name = "accessTokenAuth")
     @GetMapping("/journals/{journalId}")
     public CommonResponse<JournalDetailResponse> getJournalDetail(
-            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
+            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal,
             @PathVariable Long journalId) {
         Long memberId = principal != null ? principal.memberId() : null;
         return CommonResponse.success(journalQueryService.getJournalDetail(memberId, journalId));

@@ -26,8 +26,8 @@ reviews:
   # 변경된 각 파일에 대한 요약을 생성할지 여부입니다.
   changed_files_summary: false
   # 코드의 실행 흐름을 보여주는 시퀀스 다이어그램을 생성할지 여부입니다.
-  # PR이 너무 길어지는 것을 방지하기 위해 비활성화했습니다.
-  sequence_diagrams: false
+  # 인증·토큰 재발급 등 호출 단계가 많은 PR의 리뷰 비용을 줄이기 위해 활성화했습니다.
+  sequence_diagrams: true
   # PR에 연결된 이슈(Issue)를 분석하여 리뷰 컨텍스트에 활용할지 여부입니다.
   assess_linked_issues: true
   # 연관된 다른 이슈를 찾아서 링크할지 여부입니다.
