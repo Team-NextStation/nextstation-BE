@@ -254,18 +254,22 @@ class ImageCommandServiceTest {
     }
 
     @Test
-    @DisplayName("장소 사진 URL 검증은 우리 버킷의 장소 업로드 경로만 통과시킨다")
+    @DisplayName("장소 사진 URL 검증은 우리 버킷에서 해당 장소 앞으로 발급된 경로만 통과시킨다")
     void validatePlaceImageUrl() {
         String valid = "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/8137464/uuid.jpg";
-        imageCommandService.validatePlaceImageUrl(valid);
+        imageCommandService.validatePlaceImageUrl(valid, KAKAO_PLACE_ID);
+
+        // 다른 장소 앞으로 발급된 사진
+        assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl(valid, "9999999"))
+                .isInstanceOf(CustomException.class);
 
         // 다른 폴더로 올라간 파일
         assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl(
-                "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg"))
+                "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg", KAKAO_PLACE_ID))
                 .isInstanceOf(CustomException.class);
 
         // 우리 버킷이 아닌 외부 URL
-        assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl("https://evil.example.org/a.jpg"))
+        assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID))
                 .isInstanceOf(CustomException.class);
     }
 }

@@ -168,7 +168,7 @@ class AdminPlaceCommandServiceTest {
         adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), null));
 
         then(placeImageRepository).should(never()).save(any());
-        then(imageCommandService).should(never()).validatePlaceImageUrl(anyString());
+        then(imageCommandService).should(never()).validatePlaceImageUrl(anyString(), anyString());
     }
 
     @Test
@@ -176,7 +176,7 @@ class AdminPlaceCommandServiceTest {
     void createPlace_invalidImageUrl() {
         givenStationAndCategoryExist();
         willThrow(new CustomException(GlobalErrorCode.INVALID_REQUEST))
-                .given(imageCommandService).validatePlaceImageUrl("https://evil.example.org/a.jpg");
+                .given(imageCommandService).validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID);
 
         assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID,
                 request(List.of(), List.of("https://evil.example.org/a.jpg"))))
