@@ -83,4 +83,10 @@ public class Place extends BaseTimeEntity {
         this.kakaoPlaceId = kakaoPlaceId;
         this.status = status;
     }
+
+    public void changeStatus(PlaceStatus status, String reason) {
+        this.status = status;
+        this.rejectReason = status == PlaceStatus.REJECTED ? reason : null;
+        this.deleteReason = status == PlaceStatus.DELETED ? reason : null;
+    }
 }

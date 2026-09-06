@@ -54,6 +54,7 @@ public class AdminPlaceController {
                     - `lineId`는 대표 노선을 기준으로 한다.
                     - 필터를 여러 개 보내면 모든 조건을 만족하는 장소만 반환한다.
                     - 장소명 오름차순이며 `nextCursor`를 다음 요청의 `cursor`로 그대로 보낸다.
+                    - `status`를 여러 번 보내면 해당 상태를 모두 조회한다. 휴지통은 `status=REJECTED&status=DELETED`로 조회한다.
                     - `availableLines`와 `availableStations`는 첫 페이지에서만 제공한다.
                     - 대표 사진은 실제 장소 사진의 첫 장이며, 없을 때는 null을 반환한다.
                     """)
@@ -70,7 +71,8 @@ public class AdminPlaceController {
             @Parameter(description = "대표 호선 ID") @RequestParam(required = false) @Positive Long lineId,
             @Parameter(description = "역 ID") @RequestParam(required = false) @Positive Long stationId,
             @Parameter(description = "카테고리 코드") @RequestParam(required = false) CategoryCode categoryCode,
-            @Parameter(description = "장소 등록 상태") @RequestParam(required = false) PlaceStatus status,
+            @Parameter(description = "장소 등록 상태. 여러 번 보내면 해당 상태를 모두 조회한다. 생략하면 전체 상태를 조회한다")
+            @RequestParam(required = false) List<PlaceStatus> status,
             @Parameter(description = "다음 페이지 커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (1~50, 기본 10)")
             @RequestParam(required = false) @Min(1) @Max(50) Integer size) {

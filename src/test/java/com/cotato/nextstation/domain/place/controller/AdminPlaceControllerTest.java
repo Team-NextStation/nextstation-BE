@@ -75,7 +75,7 @@ class AdminPlaceControllerTest {
                 7L, line, 10L, "신림역", "CAFE", "카페", "장소명",
                 List.of("INDOOR", "BUDGET"), "한 줄 설명", "image-1", PlaceStatus.APPROVED);
         given(adminPlaceQueryService.getPlaces(
-                1L, 3L, 10L, CategoryCode.CAFE, PlaceStatus.APPROVED, null, 10))
+                1L, 3L, 10L, CategoryCode.CAFE, List.of(PlaceStatus.APPROVED), null, 10))
                 .willReturn(new AdminPlaceListResponse(
                         List.of(line), List.of(new AdminStationSummaryResponse(10L, "신림역")),
                         List.of(card), null, false));
