@@ -67,7 +67,8 @@ public class Place extends BaseTimeEntity {
 
     @Builder
     public Place(Long stationId,  Category category, String description, String placeName, String address,
-                 String contactNumber, Double xCoordinate, Double yCoordinate, String kakaoPlaceId) {
+                 String contactNumber, Double xCoordinate, Double yCoordinate, String kakaoPlaceId,
+                 PlaceStatus status) {
         this.stationId = stationId;
         this.category = category;
         this.description = description;
@@ -77,6 +78,6 @@ public class Place extends BaseTimeEntity {
         this.xCoordinate = xCoordinate;
         this.yCoordinate = yCoordinate;
         this.kakaoPlaceId = kakaoPlaceId;
-        this.status = PlaceStatus.APPROVED;
+        this.status = status;
     }
 }
