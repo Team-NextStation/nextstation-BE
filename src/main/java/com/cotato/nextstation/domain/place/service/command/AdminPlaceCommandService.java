@@ -3,7 +3,9 @@ package com.cotato.nextstation.domain.place.service.command;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.service.query.AdminGuard;
 import com.cotato.nextstation.domain.place.dto.request.AdminPlaceCreateRequest;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceStatusUpdateRequest;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCreateResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceStatusUpdateResponse;
 import com.cotato.nextstation.domain.place.entity.Category;
 import com.cotato.nextstation.domain.place.entity.Place;
 import com.cotato.nextstation.domain.place.entity.PlaceImage;
@@ -13,6 +15,7 @@ import com.cotato.nextstation.domain.place.enums.ImageSourceType;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
+import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository;
 import com.cotato.nextstation.domain.place.repository.CategoryRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceRepository;
@@ -28,14 +31,29 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.util.StringUtils;
+
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminPlaceCommandService {
 
+    private static final Map<PlaceStatus, Set<PlaceStatus>> ALLOWED_TRANSITIONS = Map.of(
+            PlaceStatus.PENDING, Set.of(PlaceStatus.APPROVED, PlaceStatus.REJECTED, PlaceStatus.DELETED),
+            PlaceStatus.APPROVED, Set.of(PlaceStatus.DELETED),
+            PlaceStatus.REJECTED, Set.of(PlaceStatus.PENDING),
+            PlaceStatus.DELETED, Set.of(PlaceStatus.PENDING)
+    );
+
+    private static final Set<PlaceStatus> REASON_REQUIRED_STATUSES =
+            Set.of(PlaceStatus.REJECTED, PlaceStatus.DELETED);
+
     private final AdminGuard adminGuard;
+    private final AdminPlaceRepository adminPlaceRepository;
     private final StationRepository stationRepository;
     private final CategoryRepository categoryRepository;
     private final PlaceTagRepository placeTagRepository;
@@ -98,6 +116,36 @@ public class AdminPlaceCommandService {
                     request.stationId(), request.kakaoPlaceId(), e);
             throw new CustomException(PlaceErrorCode.PLACE_ALREADY_REGISTERED);
         }
+    }
+
+    @Transactional
+    public AdminPlaceStatusUpdateResponse updateStatus(Long memberId, Long placeId,
+                                                       AdminPlaceStatusUpdateRequest request) {
+        adminGuard.requireAdmin(memberId);
+
+        Place place = adminPlaceRepository.findAdminPlaceById(placeId)
+                .orElseThrow(() -> {
+                    log.warn("존재하지 않는 장소의 상태 변경 시도: placeId={}", placeId);
+                    return new CustomException(PlaceErrorCode.PLACE_NOT_FOUND);
+                });
+
+        PlaceStatus target = request.status();
+        if (!ALLOWED_TRANSITIONS.getOrDefault(place.getStatus(), Set.of()).contains(target)) {
+            log.warn("허용되지 않는 상태 전이 요청: placeId={}, current={}, target={}",
+                    placeId, place.getStatus(), target);
+            throw new CustomException(PlaceErrorCode.INVALID_PLACE_STATUS_TRANSITION);
+        }
+
+        String reason = request.reason();
+        if (REASON_REQUIRED_STATUSES.contains(target) && !StringUtils.hasText(reason)) {
+            log.warn("사유 없이 상태 변경 요청: placeId={}, target={}", placeId, target);
+            throw new CustomException(PlaceErrorCode.PLACE_STATUS_REASON_REQUIRED);
+        }
+
+        place.changeStatus(target, reason);
+        log.info("장소 상태 변경 완료: placeId={}, target={}", placeId, target);
+
+        return new AdminPlaceStatusUpdateResponse(placeId, target);
     }
 
     private void saveTagMappings(Place place, List<PlaceTagName> tagNames) {
