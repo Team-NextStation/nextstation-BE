@@ -14,7 +14,7 @@ import java.util.Optional;
  */
 public interface AdminPlaceRepository extends Repository<Place, Long> {
 
-    @Query(value = "SELECT * FROM place WHERE id = :placeId", nativeQuery = true)
+    @Query(value = "SELECT * FROM place WHERE id = :placeId FOR UPDATE", nativeQuery = true)
     Optional<Place> findAdminPlaceById(@Param("placeId") Long placeId);
 
     /**
