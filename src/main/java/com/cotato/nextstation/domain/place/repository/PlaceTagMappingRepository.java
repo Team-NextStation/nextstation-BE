@@ -12,6 +12,10 @@ import java.util.List;
 
 public interface PlaceTagMappingRepository extends JpaRepository<PlaceTagMapping, Long> {
 
+    @Modifying
+    @Query(value = "DELETE FROM place_tag_mapping WHERE place_id = :placeId", nativeQuery = true)
+    void deleteAdminMappingsByPlaceId(@Param("placeId") Long placeId);
+
     // 장소 상세 조회 - 이 장소의 태그 전부 조회 (표시용)
     @EntityGraph(attributePaths = {"placeTag"})
     List<PlaceTagMapping> findByPlace(Place place);

@@ -3,10 +3,12 @@ package com.cotato.nextstation.domain.place.controller;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceTagResponse;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.service.query.AdminPlaceQueryService;
 import com.cotato.nextstation.domain.place.dto.request.AdminPlaceCreateRequest;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceUpdateRequest;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCreateResponse;
 import com.cotato.nextstation.domain.place.dto.response.KakaoPlaceSearchResponse;
 import com.cotato.nextstation.domain.place.service.command.AdminPlaceCommandService;
@@ -29,6 +31,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -97,6 +100,22 @@ public class AdminPlaceController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "검색할 장소명") @RequestParam(required = false) String keyword) {
         return CommonResponse.success(adminPlaceQueryService.searchPlaces(principal.memberId(), keyword));
+    }
+
+    @Operation(
+            summary = "관리자 장소 활성 태그 선택지 조회",
+            description = "기존 장소 수정 화면에서 선택할 수 있는 활성 태그의 코드와 표시명을 조회한다."
+    )
+    @SecurityRequirement(name = "accessTokenAuth")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "403", description = "관리자 권한 없음")
+    })
+    @GetMapping("/tags")
+    public CommonResponse<List<AdminPlaceTagResponse>> getActiveTags(
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
+        return CommonResponse.success(adminPlaceQueryService.getActiveTags(principal.memberId()));
     }
 
     @Operation(
@@ -188,5 +207,33 @@ public class AdminPlaceController {
             @Valid @RequestBody AdminPlaceCreateRequest request,
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
         return CommonResponse.success(adminPlaceCommandService.createPlace(principal.memberId(), request));
+    }
+
+    @Operation(
+            summary = "관리자 기존 장소 수정",
+            description = """
+                    APPROVED 또는 PENDING 상태인 장소의 태그·한 줄 설명·사진을 부분 수정한다.
+                    - 요청에서 생략한 필드는 기존 값을 유지한다.
+                    - `tagNames`는 수정 후 적용할 서로 다른 활성 태그 2개 전체를 보낸다.
+                    - `imageUrls`는 새로 추가할 사진이며, `deleteImageIds`는 삭제할 기존 사진 ID다.
+                    - 사진 삭제와 추가를 반영한 뒤 남은 사진 순서를 0부터 다시 정렬한다.
+                    """
+    )
+    @SecurityRequirement(name = "accessTokenAuth")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "수정 성공"),
+            @ApiResponse(responseCode = "400", description = "요청값 검증 실패, 잘못된 사진 또는 이미지 URL"),
+            @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "403", description = "관리자 권한 없음"),
+            @ApiResponse(responseCode = "404", description = "장소 없음 (`PlaceErrorCode.PLACE_NOT_FOUND`)"),
+            @ApiResponse(responseCode = "409", description = "수정 불가능한 장소 상태 (`PlaceErrorCode.PLACE_NOT_EDITABLE`)")
+    })
+    @PatchMapping("/{placeId}")
+    public CommonResponse<AdminPlaceDetailResponse> updatePlace(
+            @Parameter(description = "장소 ID") @PathVariable @Positive Long placeId,
+            @Valid @RequestBody AdminPlaceUpdateRequest request,
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
+        return CommonResponse.success(
+                adminPlaceCommandService.updatePlace(principal.memberId(), placeId, request));
     }
 }

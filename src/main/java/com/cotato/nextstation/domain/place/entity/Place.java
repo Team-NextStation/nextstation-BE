@@ -83,4 +83,8 @@ public class Place extends BaseTimeEntity {
         this.kakaoPlaceId = kakaoPlaceId;
         this.status = status;
     }
+
+    public void updateDescription(String description) {
+        this.description = description;
+    }
 }

@@ -272,4 +272,46 @@ class ImageCommandServiceTest {
         assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID))
                 .isInstanceOf(CustomException.class);
     }
+
+    @Test
+    @DisplayName("관리자는 해당 카카오 장소 경로의 정적 사진을 삭제할 수 있다")
+    void deletePlaceImage_success() {
+        String imageUrl = "https://test-bucket.s3.ap-northeast-2.amazonaws.com/"
+                + "images/static/places/8137464/uuid.jpg";
+
+        imageCommandService.deletePlaceImage(imageUrl, MEMBER_ID, KAKAO_PLACE_ID);
+
+        ArgumentCaptor<DeleteObjectRequest> captor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(adminGuard).requireAdmin(MEMBER_ID);
+        verify(s3Client).deleteObject(captor.capture());
+        assertThat(captor.getValue().key()).isEqualTo("images/static/places/8137464/uuid.jpg");
+    }
+
+    @Test
+    @DisplayName("다른 카카오 장소 경로의 정적 사진은 삭제할 수 없다")
+    void deletePlaceImage_rejectsOtherPlacePath() {
+        String imageUrl = "https://test-bucket.s3.ap-northeast-2.amazonaws.com/"
+                + "images/static/places/9999999/uuid.jpg";
+
+        assertThatThrownBy(() -> imageCommandService.deletePlaceImage(imageUrl, MEMBER_ID, KAKAO_PLACE_ID))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ImageErrorCode.INVALID_IMAGE_URL_FORMAT);
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 정적 장소 사진을 삭제할 수 없다")
+    void deletePlaceImage_requiresAdmin() {
+        String imageUrl = "https://test-bucket.s3.ap-northeast-2.amazonaws.com/"
+                + "images/static/places/8137464/uuid.jpg";
+        org.mockito.BDDMockito.willThrow(new CustomException(GlobalErrorCode.FORBIDDEN))
+                .given(adminGuard).requireAdmin(MEMBER_ID);
+
+        assertThatThrownBy(() -> imageCommandService.deletePlaceImage(imageUrl, MEMBER_ID, KAKAO_PLACE_ID))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", GlobalErrorCode.FORBIDDEN);
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
 }
