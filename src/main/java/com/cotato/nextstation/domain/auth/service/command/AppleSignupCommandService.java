@@ -94,8 +94,6 @@ public class AppleSignupCommandService {
             throw new CustomException(AuthErrorCode.APPLE_ACCOUNT_ALREADY_REGISTERED);
         }
 
-        saveOauthCredential(socialAccount.getId(), authorizationCode);
-
         List<MemberTermsAgreement> agreements = agreedTermsIds.stream()
                 .distinct()
                 .map(termsConsentId -> MemberTermsAgreement.builder()
@@ -106,6 +104,11 @@ public class AppleSignupCommandService {
                         .build())
                 .toList();
         memberTermsAgreementRepository.saveAll(agreements);
+
+        // authorizationCode 교환은 Apple 서버에 되돌릴 수 없는 부수효과(1회용 code 소비)를 일으킨다.
+        // 이후에도 실패할 수 있는 로컬 저장(약관 동의 등)을 다 끝낸 뒤 트랜잭션의 맨 마지막에 호출해야,
+        // 뒤이은 로컬 실패로 전체가 롤백되면서 이미 소비된 code만 날리고 credential은 못 남기는 상황을 피할 수 있다.
+        saveOauthCredential(socialAccount.getId(), authorizationCode);
 
         String signupToken = issueSignupToken(member.getId());
         log.info("Apple 회원가입 완료: memberId={}", member.getId());
