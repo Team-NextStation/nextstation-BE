@@ -31,8 +31,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -119,9 +117,6 @@ public class AdminPlaceCommandService {
         placeTagMappingRepository.flush();
         placeImageRepository.flush();
 
-        imagesToDelete.forEach(image -> schedulePlaceImageDeletion(
-                image.getImageUrl(), memberId, place.getKakaoPlaceId()));
-
         return adminPlaceQueryService.getPlaceDetail(memberId, placeId);
     }
 
@@ -184,36 +179,13 @@ public class AdminPlaceCommandService {
                 .sourceType(ImageSourceType.PLACE)
                 .build()));
 
+        // URL 재사용 요청과 S3 물리 삭제가 경합하지 않도록, 여기서는 DB 연결만 제거한다.
+        // 참조되지 않는 S3 원본 정리는 별도 배치 작업에서 처리한다.
         placeImageRepository.deleteAll(imagesToDelete);
         for (int index = 0; index < finalImages.size(); index++) {
             finalImages.get(index).updateSortOrder(index);
         }
         placeImageRepository.saveAll(finalImages);
-    }
-
-    private void schedulePlaceImageDeletion(String imageUrl, Long memberId, String kakaoPlaceId) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            deletePlaceImageIfUnreferenced(imageUrl, memberId, kakaoPlaceId);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                deletePlaceImageIfUnreferenced(imageUrl, memberId, kakaoPlaceId);
-            }
-        });
-    }
-
-    private void deletePlaceImageIfUnreferenced(String imageUrl, Long memberId, String kakaoPlaceId) {
-        try {
-            if (placeImageRepository.existsByImageUrl(imageUrl)) {
-                log.info("다른 장소가 참조 중인 S3 장소 이미지 삭제 생략: imageUrl={}", imageUrl);
-                return;
-            }
-            imageCommandService.deletePlaceImage(imageUrl, memberId, kakaoPlaceId);
-        } catch (Exception e) {
-            log.warn("S3 장소 이미지 삭제 실패(무시): placeKakaoId={}", kakaoPlaceId, e);
-        }
     }
 
     // 동시 요청으로 uk_place_station_kakao에 걸리는 경우를 flush로 앞당겨 409로 변환한다.

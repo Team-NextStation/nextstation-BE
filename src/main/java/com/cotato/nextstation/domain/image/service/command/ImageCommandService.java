@@ -115,20 +115,6 @@ public class ImageCommandService {
         log.info("S3 이미지 삭제 완료: key={}", key);
     }
 
-    public void deletePlaceImage(String imageUrl, Long memberId, String kakaoPlaceId) {
-        requireMemberId(memberId);
-        adminGuard.requireAdmin(memberId);
-        validatePlaceImageUrl(imageUrl, kakaoPlaceId);
-
-        String key = extractKeyFromImageUrl(imageUrl);
-        DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .build();
-        s3Client.deleteObject(deleteRequest);
-        log.info("S3 장소 이미지 삭제 완료: key={}", key);
-    }
-
     public void validatePlaceImageUrl(String imageUrl, String kakaoPlaceId) {
         String key = extractKeyFromImageUrl(imageUrl);
         String expectedPrefix = "%s/%s/".formatted(S3Folder.STATIC_PLACE.getPath(), kakaoPlaceId);

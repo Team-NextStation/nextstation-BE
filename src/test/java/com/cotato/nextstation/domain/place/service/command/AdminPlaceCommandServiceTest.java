@@ -37,8 +37,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Optional;
@@ -340,8 +338,6 @@ class AdminPlaceCommandServiceTest {
         assertThat(finalImages.get(1).getImageUrl()).isEqualTo(newImageUrl);
         assertThat(finalImages.get(1).getSortOrder()).isEqualTo(1);
         assertThat(finalImages.get(1).getSourceType()).isEqualTo(ImageSourceType.PLACE);
-        then(imageCommandService).should().deletePlaceImage(first.getImageUrl(), ADMIN_ID, KAKAO_PLACE_ID);
-        then(imageCommandService).should().deletePlaceImage(second.getImageUrl(), ADMIN_ID, KAKAO_PLACE_ID);
     }
 
     @Test
@@ -374,47 +370,4 @@ class AdminPlaceCommandServiceTest {
         then(placeImageRepository).shouldHaveNoInteractions();
     }
 
-    @Test
-    @DisplayName("S3 사진은 DB 트랜잭션이 커밋된 뒤에 삭제한다")
-    void updatePlace_deletesS3ObjectAfterCommit() {
-        Place place = place(PlaceStatus.APPROVED);
-        PlaceImage image = image(place, 11L, "delete-after-commit.jpg", 0);
-        AdminPlaceDetailResponse expected = org.mockito.Mockito.mock(AdminPlaceDetailResponse.class);
-        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.of(place));
-        given(placeImageRepository.findAdminImagesByPlaceId(PLACE_ID)).willReturn(List.of(image));
-        given(adminPlaceQueryService.getPlaceDetail(ADMIN_ID, PLACE_ID)).willReturn(expected);
-
-        TransactionSynchronizationManager.initSynchronization();
-        try {
-            adminPlaceCommandService.updatePlace(
-                    ADMIN_ID, PLACE_ID, new AdminPlaceUpdateRequest(null, null, null, List.of(11L)));
-
-            then(imageCommandService).should(never()).deletePlaceImage(anyString(), any(), anyString());
-
-            TransactionSynchronizationManager.getSynchronizations()
-                    .forEach(TransactionSynchronization::afterCommit);
-
-            then(imageCommandService).should()
-                    .deletePlaceImage(image.getImageUrl(), ADMIN_ID, KAKAO_PLACE_ID);
-        } finally {
-            TransactionSynchronizationManager.clearSynchronization();
-        }
-    }
-
-    @Test
-    @DisplayName("다른 장소가 같은 URL을 참조하면 DB 연결만 지우고 S3 원본은 유지한다")
-    void updatePlace_keepsSharedS3Object() {
-        Place place = place(PlaceStatus.APPROVED);
-        PlaceImage image = image(place, 11L, "shared.jpg", 0);
-        AdminPlaceDetailResponse expected = org.mockito.Mockito.mock(AdminPlaceDetailResponse.class);
-        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.of(place));
-        given(placeImageRepository.findAdminImagesByPlaceId(PLACE_ID)).willReturn(List.of(image));
-        given(placeImageRepository.existsByImageUrl(image.getImageUrl())).willReturn(true);
-        given(adminPlaceQueryService.getPlaceDetail(ADMIN_ID, PLACE_ID)).willReturn(expected);
-
-        adminPlaceCommandService.updatePlace(
-                ADMIN_ID, PLACE_ID, new AdminPlaceUpdateRequest(null, null, null, List.of(11L)));
-
-        then(imageCommandService).should(never()).deletePlaceImage(anyString(), any(), anyString());
-    }
 }

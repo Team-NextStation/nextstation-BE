@@ -22,8 +22,6 @@ public interface PlaceImageRepository extends JpaRepository<PlaceImage, Long> {
             """, nativeQuery = true)
     List<PlaceImage> findAdminImagesByPlaceId(@Param("placeId") Long placeId);
 
-    boolean existsByImageUrl(String imageUrl);
-
     @Query(value = """
             SELECT pi.id AS imageId, pi.place_id AS placeId, pi.image_url AS imageUrl
             FROM place_image pi
