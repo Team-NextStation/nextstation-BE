@@ -1,5 +1,7 @@
 package com.cotato.nextstation.domain.place.converter;
 
+import com.cotato.nextstation.domain.place.client.dto.KakaoKeywordSearchResponse;
+import com.cotato.nextstation.domain.place.dto.response.KakaoPlaceSearchResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceDetailResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceReviewPreviewResponse;
@@ -10,6 +12,7 @@ import com.cotato.nextstation.domain.place.entity.PlaceReviewImage;
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.List;
@@ -140,5 +143,43 @@ public class PlaceConverter {
                 place.getXCoordinate(),
                 place.getYCoordinate()
         );
+    }
+
+    // ===== 카카오 장소 검색(KakaoPlaceSearchResponse)용 =====
+
+    public KakaoPlaceSearchResponse toKakaoPlaceSearchResponse(List<KakaoKeywordSearchResponse.Document> documents) {
+        return new KakaoPlaceSearchResponse(
+                documents.stream()
+                        .map(this::toKakaoPlaceCandidate)
+                        .toList()
+        );
+    }
+
+    private KakaoPlaceSearchResponse.KakaoPlaceCandidate toKakaoPlaceCandidate(KakaoKeywordSearchResponse.Document document) {
+        return new KakaoPlaceSearchResponse.KakaoPlaceCandidate(
+                document.id(),
+                document.placeName(),
+                resolveAddress(document),
+                blankToNull(document.phone()),
+                toCoordinate(document.x()),
+                toCoordinate(document.y()),
+                toKakaoPlaceUrl(document.id())
+        );
+    }
+
+    // 도로명 주소가 우선이나 미부여 지역은 빈 문자열로 오므로 지번 주소로 대체한다
+    private static String resolveAddress(KakaoKeywordSearchResponse.Document document) {
+        return StringUtils.hasText(document.roadAddressName())
+                ? document.roadAddressName()
+                : blankToNull(document.addressName());
+    }
+
+    // 카카오는 값이 없을 때 null이 아니라 빈 문자열을 내려준다
+    private static String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value : null;
+    }
+
+    private static Double toCoordinate(String value) {
+        return StringUtils.hasText(value) ? Double.valueOf(value) : null;
     }
 }

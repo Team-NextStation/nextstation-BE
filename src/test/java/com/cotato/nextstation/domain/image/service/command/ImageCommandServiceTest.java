@@ -6,6 +6,8 @@ import com.cotato.nextstation.domain.image.exception.ImageErrorCode;
 import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.member.entity.Member;
+import com.cotato.nextstation.domain.member.service.query.AdminGuard;
+import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import com.cotato.nextstation.global.exception.CustomException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +43,7 @@ class ImageCommandServiceTest {
     private static final Long MEMBER_ID = 1L;
     private static final Long JOURNAL_ID = 10L;
     private static final Long OTHER_MEMBER_ID = 999L;
+    private static final String KAKAO_PLACE_ID = "8137464";
 
     @Mock
     private S3Presigner s3Presigner;
@@ -51,12 +54,15 @@ class ImageCommandServiceTest {
     @Mock
     private JournalRepository journalRepository;
 
+    @Mock
+    private AdminGuard adminGuard;
+
     private ImageCommandService imageCommandService;
 
 
     @BeforeEach
     void setUp() {
-        imageCommandService = new ImageCommandService(s3Presigner, s3Client, journalRepository, BUCKET_NAME, REGION);
+        imageCommandService = new ImageCommandService(s3Presigner, s3Client, journalRepository, adminGuard, BUCKET_NAME, REGION);
     }
 
     private void givenPresignedUrl(String url) throws Exception {
@@ -72,7 +78,7 @@ class ImageCommandServiceTest {
         givenPresignedUrl("https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg?X-Amz-Signature=abc");
 
         // when
-        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, "profile.jpg");
+        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, null, "profile.jpg");
 
         // then
         assertThat(response.presignedUrl()).contains("X-Amz-Signature");
@@ -90,7 +96,7 @@ class ImageCommandServiceTest {
         givenPresignedUrl("https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/journal/1/10/uuid.png?X-Amz-Signature=abc");
 
         // when
-        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.JOURNAL, MEMBER_ID, JOURNAL_ID, "photo.png");
+        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.JOURNAL, MEMBER_ID, JOURNAL_ID, null, "photo.png");
 
         // then
         assertThat(response.imageUrl())
@@ -114,7 +120,7 @@ class ImageCommandServiceTest {
         givenPresignedUrl("https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid." + extension);
 
         // when
-        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, fileName);
+        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, null, fileName);
 
         // then
         assertThat(response.contentType()).isEqualTo(expectedContentType);
@@ -123,7 +129,7 @@ class ImageCommandServiceTest {
     @Test
     @DisplayName("파일명에 확장자가 없으면 예외가 발생한다")
     void getPresignedUrl_noExtension() {
-        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, "profile"))
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, null, "profile"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ImageErrorCode.INVALID_FILE_NAME.getMessage());
     }
@@ -131,7 +137,7 @@ class ImageCommandServiceTest {
     @Test
     @DisplayName("파일명이 점(.)으로 끝나면 예외가 발생한다")
     void getPresignedUrl_trailingDot() {
-        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, "profile."))
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, null, "profile."))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ImageErrorCode.INVALID_FILE_NAME.getMessage());
     }
@@ -139,7 +145,7 @@ class ImageCommandServiceTest {
     @Test
     @DisplayName("지원하지 않는 확장자면 예외가 발생한다")
     void getPresignedUrl_unsupportedExtension() {
-        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, "profile.bmp"))
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, MEMBER_ID, null, null, "profile.bmp"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ImageErrorCode.UNSUPPORTED_FILE_EXTENSION.getMessage());
     }
@@ -147,7 +153,7 @@ class ImageCommandServiceTest {
     @Test
     @DisplayName("memberId 없이 PROFILE 업로드를 요청하면 예외가 발생한다")
     void getPresignedUrl_profileMissingMemberId() {
-        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, null, null, "profile.jpg"))
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.PROFILE, null, null, null, "profile.jpg"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ImageErrorCode.MISSING_MEMBER_ID.getMessage());
     }
@@ -160,11 +166,11 @@ class ImageCommandServiceTest {
     }
 
     @Test
-    @DisplayName("STATIC_PLACE 폴더는 presigned URL 발급 대상이 아니라 예외가 발생한다")
-    void getPresignedUrl_staticPlaceUnsupported() {
-        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.STATIC_PLACE, MEMBER_ID, null, "place.jpg"))
+    @DisplayName("STATIC_PLACE 폴더인데 kakaoPlaceId가 없으면 키를 만들 수 없어 예외가 발생한다")
+    void getPresignedUrl_staticPlaceWithoutKakaoPlaceId() {
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.STATIC_PLACE, MEMBER_ID, null, null, "place.jpg"))
                 .isInstanceOf(CustomException.class)
-                .hasMessageContaining(ImageErrorCode.UNSUPPORTED_UPLOAD_FOLDER.getMessage());
+                .hasMessageContaining(ImageErrorCode.MISSING_KAKAO_PLACE_ID.getMessage());
     }
 
     @Test
@@ -218,9 +224,52 @@ class ImageCommandServiceTest {
         given(journalRepository.existsByIdAndMember_Id(JOURNAL_ID, MEMBER_ID)).willReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.JOURNAL, MEMBER_ID, JOURNAL_ID, "photo.jpg"))
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.JOURNAL, MEMBER_ID, JOURNAL_ID, null, "photo.jpg"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ImageErrorCode.JOURNAL_ACCESS_DENIED.getMessage());
     }
 
+    @Test
+    @DisplayName("STATIC_PLACE 폴더 정상 요청이면 images/static/places/{kakaoPlaceId}/{uuid}.{ext} 형태의 key로 발급된다")
+    void getPresignedUrl_placeSuccess() throws Exception {
+        givenPresignedUrl("https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/8137464/uuid.jpg?X-Amz-Signature=abc");
+
+        PresignedUrlResponse response = imageCommandService.getPresignedUrl(S3Folder.STATIC_PLACE, MEMBER_ID, null, KAKAO_PLACE_ID, "place.jpg");
+
+        assertThat(response.imageUrl())
+                .startsWith("https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/8137464/")
+                .endsWith(".jpg");
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 STATIC_PLACE 폴더 presigned URL을 발급받지 못한다")
+    void getPresignedUrl_staticPlaceRequiresAdmin() {
+        org.mockito.BDDMockito.willThrow(new CustomException(GlobalErrorCode.FORBIDDEN))
+                .given(adminGuard).requireAdmin(MEMBER_ID);
+
+        assertThatThrownBy(() -> imageCommandService.getPresignedUrl(S3Folder.STATIC_PLACE, MEMBER_ID, null, KAKAO_PLACE_ID, "place.jpg"))
+                .isInstanceOf(CustomException.class);
+
+        verify(s3Presigner, never()).presignPutObject(any(PutObjectPresignRequest.class));
+    }
+
+    @Test
+    @DisplayName("장소 사진 URL 검증은 우리 버킷에서 해당 장소 앞으로 발급된 경로만 통과시킨다")
+    void validatePlaceImageUrl() {
+        String valid = "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/8137464/uuid.jpg";
+        imageCommandService.validatePlaceImageUrl(valid, KAKAO_PLACE_ID);
+
+        // 다른 장소 앞으로 발급된 사진
+        assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl(valid, "9999999"))
+                .isInstanceOf(CustomException.class);
+
+        // 다른 폴더로 올라간 파일
+        assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl(
+                "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg", KAKAO_PLACE_ID))
+                .isInstanceOf(CustomException.class);
+
+        // 우리 버킷이 아닌 외부 URL
+        assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID))
+                .isInstanceOf(CustomException.class);
+    }
 }
