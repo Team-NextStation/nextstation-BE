@@ -182,6 +182,16 @@ public class SwaggerConfig {
                 .build();
     }
 
+    // 관리자 전용 API
+    @Bean
+    public GroupedOpenApi adminApi() {
+        return GroupedOpenApi.builder()
+                .group("Admin")
+                .displayName("Admin API")
+                .pathsToMatch("/api/v1/admin/**")
+                .build();
+    }
+
     // 여행일지 관련 API
     @Bean
     public GroupedOpenApi journalApi() {

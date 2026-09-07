@@ -1,0 +1,240 @@
+package com.cotato.nextstation.domain.place.service.command;
+
+import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
+import com.cotato.nextstation.domain.member.service.query.AdminGuard;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceCreateRequest;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCreateResponse;
+import com.cotato.nextstation.domain.place.entity.Category;
+import com.cotato.nextstation.domain.place.entity.Place;
+import com.cotato.nextstation.domain.place.entity.PlaceImage;
+import com.cotato.nextstation.domain.place.entity.PlaceTag;
+import com.cotato.nextstation.domain.place.enums.CategoryCode;
+import com.cotato.nextstation.domain.place.enums.ImageSourceType;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
+import com.cotato.nextstation.domain.place.enums.PlaceTagName;
+import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
+import com.cotato.nextstation.domain.place.repository.CategoryRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceTagRepository;
+import com.cotato.nextstation.domain.station.exception.StationErrorCode;
+import com.cotato.nextstation.domain.station.repository.StationRepository;
+import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.never;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.times;
+import static org.mockito.BDDMockito.willThrow;
+
+@ExtendWith(MockitoExtension.class)
+class AdminPlaceCommandServiceTest {
+
+    @InjectMocks
+    private AdminPlaceCommandService adminPlaceCommandService;
+
+    @Mock
+    private AdminGuard adminGuard;
+
+    @Mock
+    private StationRepository stationRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
+
+    @Mock
+    private PlaceTagRepository placeTagRepository;
+
+    @Mock
+    private PlaceRepository placeRepository;
+
+    @Mock
+    private PlaceTagMappingRepository placeTagMappingRepository;
+
+    @Mock
+    private PlaceImageRepository placeImageRepository;
+
+    @Mock
+    private ImageCommandService imageCommandService;
+
+    private static final Long ADMIN_ID = 1L;
+    private static final Long STATION_ID = 12L;
+    private static final Long PLACE_ID = 301L;
+    private static final String KAKAO_PLACE_ID = "8137464";
+    private static final String IMAGE_URL_PREFIX =
+            "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/8137464/";
+
+    private AdminPlaceCreateRequest request(List<PlaceTagName> tagNames, List<String> imageUrls) {
+        return new AdminPlaceCreateRequest(
+                STATION_ID, CategoryCode.CAFE, "역에서 5분 거리의 통유리 카페", tagNames, imageUrls,
+                KAKAO_PLACE_ID, "스타벅스 강남역점", "서울 강남구 강남대로 390", "02-1234-5678",
+                127.0276, 37.4979);
+    }
+
+    // 저장 시 id가 채워진 Place를 돌려주도록 흉내낸다
+    private void givenPlaceSaved() {
+        given(placeRepository.saveAndFlush(any(Place.class))).willAnswer(invocation -> {
+            Place place = invocation.getArgument(0);
+            ReflectionTestUtils.setField(place, "id", PLACE_ID);
+            return place;
+        });
+    }
+
+    private void givenStationAndCategoryExist() {
+        given(stationRepository.existsById(STATION_ID)).willReturn(true);
+        given(categoryRepository.findByCode(CategoryCode.CAFE))
+                .willReturn(Optional.of(Category.of(CategoryCode.CAFE, "카페", "https://cdn/default-cafe.jpg")));
+    }
+
+    @Test
+    @DisplayName("등록된 장소는 PENDING 상태로 저장된다")
+    void createPlace_savedAsPending() {
+        givenStationAndCategoryExist();
+        givenPlaceSaved();
+
+        AdminPlaceCreateResponse response =
+                adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of()));
+
+        ArgumentCaptor<Place> captor = ArgumentCaptor.forClass(Place.class);
+        then(placeRepository).should().saveAndFlush(captor.capture());
+        Place saved = captor.getValue();
+
+        assertThat(saved.getStatus()).isEqualTo(PlaceStatus.PENDING);
+        assertThat(saved.getStationId()).isEqualTo(STATION_ID);
+        assertThat(saved.getKakaoPlaceId()).isEqualTo(KAKAO_PLACE_ID);
+        assertThat(saved.getXCoordinate()).isEqualTo(127.0276);
+        assertThat(response.placeId()).isEqualTo(PLACE_ID);
+        assertThat(response.status()).isEqualTo(PlaceStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("선택한 태그가 매핑까지 저장되고, 같은 태그를 두 번 보내면 한 번만 저장된다")
+    void createPlace_savesTagMappings() {
+        givenStationAndCategoryExist();
+        givenPlaceSaved();
+        given(placeTagRepository.findByName(PlaceTagName.HOTPLACE))
+                .willReturn(Optional.of(PlaceTag.of(PlaceTagName.HOTPLACE, true)));
+        given(placeTagRepository.findByName(PlaceTagName.PHOTO_SPOT))
+                .willReturn(Optional.of(PlaceTag.of(PlaceTagName.PHOTO_SPOT, true)));
+
+        adminPlaceCommandService.createPlace(ADMIN_ID,
+                request(List.of(PlaceTagName.HOTPLACE, PlaceTagName.PHOTO_SPOT, PlaceTagName.HOTPLACE), List.of()));
+
+        then(placeTagMappingRepository).should(times(2)).save(any());
+    }
+
+    @Test
+    @DisplayName("사진은 받은 순서대로 저장되고 첫 번째가 대표 이미지가 된다")
+    void createPlace_savesImagesInOrder() {
+        givenStationAndCategoryExist();
+        givenPlaceSaved();
+
+        adminPlaceCommandService.createPlace(ADMIN_ID,
+                request(List.of(), List.of(IMAGE_URL_PREFIX + "a.jpg", IMAGE_URL_PREFIX + "b.jpg")));
+
+        ArgumentCaptor<PlaceImage> captor = ArgumentCaptor.forClass(PlaceImage.class);
+        then(placeImageRepository).should(times(2)).save(captor.capture());
+
+        List<PlaceImage> images = captor.getAllValues();
+        assertThat(images.get(0).getSortOrder()).isZero();
+        assertThat(images.get(0).getImageUrl()).endsWith("a.jpg");
+        assertThat(images.get(1).getSortOrder()).isEqualTo(1);
+        assertThat(images).allSatisfy(image -> assertThat(image.getSourceType()).isEqualTo(ImageSourceType.PLACE));
+    }
+
+    @Test
+    @DisplayName("사진 없이도 장소 등록은 성공한다")
+    void createPlace_withoutImages() {
+        givenStationAndCategoryExist();
+        givenPlaceSaved();
+
+        adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), null));
+
+        then(placeImageRepository).should(never()).save(any());
+        then(imageCommandService).should(never()).validatePlaceImageUrl(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("장소 사진 경로가 아닌 이미지 URL이면 장소를 저장하지 않는다")
+    void createPlace_invalidImageUrl() {
+        givenStationAndCategoryExist();
+        willThrow(new CustomException(GlobalErrorCode.INVALID_REQUEST))
+                .given(imageCommandService).validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID);
+
+        assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID,
+                request(List.of(), List.of("https://evil.example.org/a.jpg"))))
+                .isInstanceOf(CustomException.class);
+
+        then(placeRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 역이면 404다")
+    void createPlace_stationNotFound() {
+        given(stationRepository.existsById(STATION_ID)).willReturn(false);
+
+        assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of())))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", StationErrorCode.STATION_NOT_FOUND);
+
+        then(placeRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("같은 역에 이미 등록된 카카오 장소면 409다")
+    void createPlace_duplicate() {
+        given(stationRepository.existsById(STATION_ID)).willReturn(true);
+        given(placeRepository.existsByStationAndKakaoPlaceIdForAdmin(STATION_ID, KAKAO_PLACE_ID)).willReturn(true);
+
+        assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of())))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.PLACE_ALREADY_REGISTERED);
+
+        then(placeRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("중복 확인을 통과해도 유니크 제약에 걸리면 409로 바꾼다")
+    void createPlace_duplicateOnSave() {
+        givenStationAndCategoryExist();
+        given(placeRepository.saveAndFlush(any(Place.class)))
+                .willThrow(new DataIntegrityViolationException("uk_place_station_kakao"));
+
+        assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of())))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.PLACE_ALREADY_REGISTERED);
+
+        then(placeTagMappingRepository).shouldHaveNoInteractions();
+        then(placeImageRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 아무것도 저장하지 않고 막는다")
+    void createPlace_notAdmin() {
+        willThrow(new CustomException(GlobalErrorCode.FORBIDDEN)).given(adminGuard).requireAdmin(ADMIN_ID);
+
+        assertThatThrownBy(() -> adminPlaceCommandService.createPlace(ADMIN_ID, request(List.of(), List.of())))
+                .isInstanceOf(CustomException.class);
+
+        then(stationRepository).shouldHaveNoInteractions();
+        then(placeRepository).should(never()).saveAndFlush(any());
+    }
+}

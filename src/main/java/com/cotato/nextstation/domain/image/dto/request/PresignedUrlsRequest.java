@@ -15,9 +15,10 @@ public record PresignedUrlsRequest(
                 description = """
                         업로드 대상 폴더
                         - `JOURNAL`: 여행일지 이미지, journalId 필수
-                        - PROFILE, `STATIC_PLACE`는 이 API로 발급 대상이 아니므로 넣지 말 것
+                        - `STATIC_PLACE`: 장소 사진, kakaoPlaceId 필수. 관리자만 발급 가능
+                        - PROFILE은 이 API로 발급 대상이 아니므로 넣지 말 것
                         """,
-                allowableValues = {"JOURNAL"},
+                allowableValues = {"JOURNAL", "STATIC_PLACE"},
                 example = "JOURNAL"
         )
         @NotNull(message = "업로드 대상 폴더는 필수입니다.")
@@ -26,7 +27,10 @@ public record PresignedUrlsRequest(
         @Schema(description = "여행일지 id", example = "10")
         Long journalId,
 
-        @Schema(description = "원본 파일명(확장자 포함) 목록. 최대 10개", example = "profile.jpg")
+        @Schema(description = "카카오맵 장소 ID, folder가 STATIC_PLACE일 때만 필수", example = "8137464")
+        String kakaoPlaceId,
+
+        @Schema(description = "원본 파일명(확장자 포함) 목록. 최대 15개", example = "profile.jpg")
         @NotEmpty(message = "fileNames는 최소 1개 이상이어야 합니다.")
         @Size(max = 15, message = "한 번에 최대 15개까지 업로드할 수 있습니다.")
         List<@NotBlank String> fileNames

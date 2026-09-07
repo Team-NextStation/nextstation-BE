@@ -47,7 +47,7 @@ public class ImageController {
                         - Content-Type 헤더에 응답의 contentType을 그대로 실어야 한다.
                     - presignedUrl은 10분 후 만료된다.
                     - 업로드 완료 후, 응답의 imageUrl을 프로필 설정 API 등 이미지 URL이 필요한 다음 요청에 그대로 실어 보내면 된다.
-                    - folder는 도메인에 맞추어서 요청한다. (PROFILE: 프로필 이미지, JOURNAL: 여행일지 이미지 및 장소 리뷰 사진)
+                    - folder는 도메인에 맞추어서 요청한다. (PROFILE: 프로필 이미지, JOURNAL: 여행일지 이미지 및 장소 리뷰 사진, STATIC_PLACE: 장소 사진, 관리자 전용)
                        - 아래 Request body의 Schema 설명 참고
                     - folder가 PROFILE인 경우, 회원가입 프로필 설정 단계라서 accessToken이 없을 수 있어 signupToken도 허용한다.
                     """
@@ -67,7 +67,7 @@ public class ImageController {
     ) {
         Long memberId = resolveMemberId(authorizationHeader, request.folder());
         return CommonResponse.success(imageCommandService.getPresignedUrl(
-                request.folder(), memberId, request.journalId(), request.fileName()));
+                request.folder(), memberId, request.journalId(), request.kakaoPlaceId(), request.fileName()));
     }
 
     // 단일 발급 엔드포인트 전용 인증 처리
@@ -116,7 +116,7 @@ public class ImageController {
                 - presignedUrl은 10분 후 만료된다.
                 - 업로드 완료 후, 응답의 imageUrl 목록을 여행일지 작성 API 등
                   이미지 URL이 필요한 다음 요청에 그대로 실어 보내면 된다.
-                - folder는 도메인에 맞추어서 요청한다. (JOURNAL: 여행일지 대표 사진 및 장소 리뷰 사진)
+                - folder는 도메인에 맞추어서 요청한다. (JOURNAL: 여행일지 대표 사진 및 장소 리뷰 사진, STATIC_PLACE: 장소 사진, 관리자 전용)
                     - PROFILE은 단일 업로드 API(/presigned-url)를 사용할 것
                 - fileNames(최대 15개) 순서대로 응답이 반환되므로, 순서가 보장된다.
                 """
@@ -133,7 +133,7 @@ public class ImageController {
             @Valid @RequestBody PresignedUrlsRequest request
     ) {
         return CommonResponse.success(imageCommandService.getPresignedUrls(
-                request.folder(), principal.memberId(), request.journalId(), request.fileNames()));
+                request.folder(), principal.memberId(), request.journalId(), request.kakaoPlaceId(), request.fileNames()));
     }
 
 
