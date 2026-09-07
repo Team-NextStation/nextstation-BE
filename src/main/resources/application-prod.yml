@@ -59,5 +59,8 @@ kakao:
 
 apple:
   oauth:
-    # 네이티브 앱의 Bundle ID(App ID). 나중에 웹 Services ID를 추가하면 여기에 콤마로 더한다.
+    # 네이티브 앱의 Bundle ID(App ID) + 웹 Services ID를 콤마로 더한다.
     allowed-audiences: ${APPLE_OAUTH_ALLOWED_AUDIENCES}
+    web-client-id: ${APPLE_OAUTH_WEB_CLIENT_ID}
+    web-redirect-uri: ${APPLE_OAUTH_WEB_REDIRECT_URI}
+    web-frontend-redirect-uri: ${APPLE_OAUTH_WEB_FRONTEND_REDIRECT_URI}
