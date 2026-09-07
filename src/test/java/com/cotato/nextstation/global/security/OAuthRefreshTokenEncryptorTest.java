@@ -45,6 +45,21 @@ class OAuthRefreshTokenEncryptorTest {
     }
 
     @Test
+    @DisplayName("암호문이 변조되면 복호화가 실패한다 - AES-GCM(stronger)은 인증된 암호화라 무결성이 깨지면 예외를 던진다")
+    void decrypt_tamperedCipherText_throws() {
+        // given
+        String encrypted = encryptor().encrypt("apple-refresh-token-abc123");
+        // hex 문자열의 마지막 한 글자를 바꿔 암호문(태그 포함)을 변조한다
+        char lastChar = encrypted.charAt(encrypted.length() - 1);
+        char replacement = lastChar == '0' ? '1' : '0';
+        String tampered = encrypted.substring(0, encrypted.length() - 1) + replacement;
+
+        // when & then
+        assertThatThrownBy(() -> encryptor().decrypt(tampered))
+                .isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
     @DisplayName("secret이 비어 있으면 생성 시점에 실패한다")
     void constructor_emptySecret() {
         assertThatThrownBy(() -> new OAuthRefreshTokenEncryptor("", SALT))
