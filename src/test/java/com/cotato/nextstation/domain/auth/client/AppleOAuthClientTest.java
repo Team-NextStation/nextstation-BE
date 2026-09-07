@@ -14,14 +14,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AppleOAuthClientTest {
 
     private AppleOAuthClient client() {
-        return new AppleOAuthClient(List.of("com.cotato.nextstation"));
+        return new AppleOAuthClient(List.of("com.cotato.nextstation"), "");
     }
 
     @Test
     @DisplayName("allowed-audiences 설정이 비어 있으면 생성 시점에 실패한다")
     void constructor_emptyAllowedAudiences() {
-        assertThatThrownBy(() -> new AppleOAuthClient(List.of()))
+        assertThatThrownBy(() -> new AppleOAuthClient(List.of(), ""))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("web-client-id가 설정되어 있으면 allowed-audiences에 자동으로 병합된다")
+    void constructor_mergesWebClientIdIntoAllowedAudiences() throws Exception {
+        AppleOAuthClient client = new AppleOAuthClient(List.of("com.cotato.nextstation"), "web.services.id");
+
+        @SuppressWarnings("unchecked")
+        java.util.Set<String> allowedAudiences =
+                (java.util.Set<String>) org.springframework.test.util.ReflectionTestUtils.getField(client, "allowedAudiences");
+
+        org.assertj.core.api.Assertions.assertThat(allowedAudiences)
+                .contains("com.cotato.nextstation", "web.services.id");
     }
 
     @Test

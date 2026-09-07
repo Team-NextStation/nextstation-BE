@@ -25,6 +25,7 @@ import java.net.http.HttpClient;
 import java.security.Key;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,7 +58,8 @@ public class AppleOAuthClient {
     private volatile Map<String, Key> cachedKeysByKid = Map.of();
     private volatile Instant lastRefreshedAt = Instant.EPOCH;
 
-    public AppleOAuthClient(@Value("${apple.oauth.allowed-audiences}") List<String> allowedAudiences) {
+    public AppleOAuthClient(@Value("${apple.oauth.allowed-audiences}") List<String> allowedAudiences,
+                             @Value("${apple.oauth.web-client-id:}") String webClientId) {
 
         // 목록이 비면 요청마다 런타임에 터지므로 부팅 시점에 실패시킨다
         if (allowedAudiences.isEmpty()) {
@@ -75,7 +77,15 @@ public class AppleOAuthClient {
         this.restClient = RestClient.builder()
                 .requestFactory(requestFactory)
                 .build();
-        this.allowedAudiences = Set.copyOf(allowedAudiences);
+
+        // web-client-id(Services ID)를 allowed-audiences에 자동으로 병합한다. 이 둘을 별도 설정값으로 두고
+        // 사람이 직접 맞추게 하면, web-client-id만 채우고 allowed-audiences에 추가하는 걸 깜빡하는 실수가
+        // 배포 시점이 아니라 실제 웹 로그인 요청이 들어왔을 때 401로만 드러난다 - 그걸 원천 차단한다.
+        Set<String> mergedAudiences = new HashSet<>(allowedAudiences);
+        if (!webClientId.isBlank()) {
+            mergedAudiences.add(webClientId);
+        }
+        this.allowedAudiences = Set.copyOf(mergedAudiences);
     }
 
     // 서명(RS256) + iss/aud/exp/nonce 검증까지 통과한 claims에서 우리가 쓰는 값만 추려 반환한다. 위변조·만료·재전송(replay) 토큰은 CustomException(401)으로 거부된다.
