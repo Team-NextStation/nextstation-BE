@@ -2,6 +2,7 @@ package com.cotato.nextstation.domain.auth.client;
 
 import com.cotato.nextstation.domain.auth.client.dto.AppleIdentityToken;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
+import com.cotato.nextstation.domain.auth.util.AppleNonceHasher;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import io.jsonwebtoken.Claims;
@@ -21,13 +22,9 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.net.http.HttpClient;
-import java.nio.charset.StandardCharsets;
 import java.security.Key;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,7 +40,6 @@ public class AppleOAuthClient {
 
     private static final String JWKS_URI = "https://appleid.apple.com/auth/keys";
     private static final String ISSUER = "https://appleid.apple.com";
-    private static final String NONCE_HASH_ALGORITHM = "SHA-256";
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
@@ -110,23 +106,12 @@ public class AppleOAuthClient {
         }
 
         String expectedNonce = claims.get("nonce", String.class);
-        if (expectedNonce == null || !expectedNonce.equalsIgnoreCase(hashNonce(nonce))) {
+        if (expectedNonce == null || !expectedNonce.equalsIgnoreCase(AppleNonceHasher.hash(nonce))) {
             log.warn("nonce가 일치하지 않는 Apple identity token(재전송 의심)");
             throw new CustomException(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN);
         }
 
         return AppleIdentityToken.from(claims);
-    }
-
-    private String hashNonce(String nonce) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance(NONCE_HASH_ALGORITHM);
-            byte[] hashed = digest.digest(nonce.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashed);
-        } catch (NoSuchAlgorithmException e) {
-            // 표준 JDK가 SHA-256을 지원 안 하는 환경은 없다고 가정한다 - 발생하면 배포 환경 자체가 이상한 것.
-            throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다.", e);
-        }
     }
 
     private Key locateKey(Header header) {
