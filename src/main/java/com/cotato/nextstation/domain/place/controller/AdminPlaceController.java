@@ -18,6 +18,8 @@ import com.cotato.nextstation.global.security.AuthenticationPrincipal;
 import com.cotato.nextstation.global.security.JwtPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -108,7 +110,8 @@ public class AdminPlaceController {
     )
     @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(ref = "#/components/schemas/CommonResponseListAdminPlaceTagResponse"))),
             @ApiResponse(responseCode = "401", description = "인증 실패"),
             @ApiResponse(responseCode = "403", description = "관리자 권한 없음")
     })
@@ -221,7 +224,8 @@ public class AdminPlaceController {
     )
     @SecurityRequirement(name = "accessTokenAuth")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "수정 성공"),
+            @ApiResponse(responseCode = "200", description = "수정 성공",
+                    content = @Content(schema = @Schema(ref = "#/components/schemas/CommonResponseAdminPlaceDetailResponse"))),
             @ApiResponse(responseCode = "400", description = "요청값 검증 실패, 잘못된 사진 또는 이미지 URL"),
             @ApiResponse(responseCode = "401", description = "인증 실패"),
             @ApiResponse(responseCode = "403", description = "관리자 권한 없음"),
