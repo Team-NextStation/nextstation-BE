@@ -1,32 +1,32 @@
 package com.cotato.nextstation.domain.member.service;
 
+import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
+import com.cotato.nextstation.domain.member.entity.AuthProvider;
+import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
+import com.cotato.nextstation.domain.member.entity.SocialOauthCredential;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
-import org.junit.jupiter.api.BeforeEach;
+import com.cotato.nextstation.domain.member.repository.MemberSocialAccountRepository;
+import com.cotato.nextstation.domain.member.repository.SocialOauthCredentialRepository;
+import com.cotato.nextstation.global.security.OAuthRefreshTokenEncryptor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.never;
 import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class WithdrawnMemberCleanerTest {
 
     @InjectMocks
@@ -36,51 +36,40 @@ class WithdrawnMemberCleanerTest {
     private MemberRepository memberRepository;
 
     @Mock
-    private EntityManager entityManager;
+    private MemberSocialAccountRepository memberSocialAccountRepository;
 
     @Mock
-    private Query query;
+    private SocialOauthCredentialRepository socialOauthCredentialRepository;
 
-    @BeforeEach
-    void setUpQuery() {
-        given(entityManager.createNativeQuery(anyString())).willReturn(query);
-        given(query.setParameter(eq("ids"), any())).willReturn(query);
+    @Mock
+    private OAuthRefreshTokenEncryptor oAuthRefreshTokenEncryptor;
+
+    @Mock
+    private AppleTokenClient appleTokenClient;
+
+    @Mock
+    private WithdrawnMemberPurger withdrawnMemberPurger;
+
+    private MemberSocialAccount appleAccount(Long memberId, Long accountId) {
+        MemberSocialAccount account = MemberSocialAccount.builder()
+                .memberId(memberId)
+                .provider(AuthProvider.APPLE)
+                .providerUserId("provider-user-" + memberId)
+                .build();
+        ReflectionTestUtils.setField(account, "id", accountId);
+        return account;
     }
 
-    private List<String> executedSql() {
-        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-        then(entityManager).should(org.mockito.Mockito.atLeastOnce()).createNativeQuery(captor.capture());
-        return captor.getAllValues();
-    }
-
-    @Test
-    @DisplayName("유예가 지난 탈퇴 회원의 행과 관련 데이터를 자식 → 부모 순서로 삭제한다")
-    void purge_hardDeletesMemberAndRelatedRows() {
-        // given
-        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
-                .willReturn(List.of(1L, 2L));
-
-        // when
-        withdrawnMemberCleaner.purgeExpiredWithdrawals();
-
-        // then
-        List<String> sqls = executedSql();
-        // member 행 삭제는 반드시 마지막 - 앞선 문장들이 member_id로 자식을 찾기 때문
-        assertThat(sqls.get(sqls.size() - 1)).isEqualTo("DELETE FROM member WHERE id IN (:ids)");
-        // 자식이 부모보다 먼저
-        assertThat(indexOfTable(sqls, "place_review_image")).isLessThan(indexOfTable(sqls, "place_review"));
-        assertThat(indexOfTable(sqls, "place_review")).isLessThan(indexOfTable(sqls, "journal"));
-        assertThat(indexOfTable(sqls, "course_places")).isLessThan(indexOfTable(sqls, "course"));
-        // 회원이 남긴 흔적이 어느 테이블에도 남지 않는다
-        assertThat(sqls).allMatch(sql -> sql.startsWith("DELETE FROM"));
-        assertThat(tables(sqls)).contains("journal", "journal_image", "course", "course_like", "place_review",
-                "place_review_like", "member_place_stamps", "member_terms_agreement", "member_social_account",
-                "email_verification", "recommendation_log", "member");
-        then(query).should(org.mockito.Mockito.atLeastOnce()).setParameter("ids", List.of(1L, 2L));
+    private SocialOauthCredential credential(Long accountId, String encryptedRefreshToken) {
+        return SocialOauthCredential.builder()
+                .memberSocialAccountId(accountId)
+                .provider(AuthProvider.APPLE)
+                .refreshToken(encryptedRefreshToken)
+                .build();
     }
 
     @Test
-    @DisplayName("대상이 없으면 아무것도 삭제하지 않는다")
+    @DisplayName("대상이 없으면 아무것도 하지 않는다")
     void purge_noTargets() {
         // given
         given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
@@ -90,14 +79,84 @@ class WithdrawnMemberCleanerTest {
         withdrawnMemberCleaner.purgeExpiredWithdrawals();
 
         // then
-        then(entityManager).should(never()).createNativeQuery(anyString());
+        then(withdrawnMemberPurger).should(never()).purge(any());
     }
 
-    private List<String> tables(List<String> sqls) {
-        return sqls.stream().map(sql -> sql.split(" ")[2]).toList();
+    @Test
+    @DisplayName("Apple 연동이 없는 회원은 revoke 없이 그대로 파기 대상에 넘긴다")
+    void purge_nonAppleMember_skipsRevoke() {
+        // given
+        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
+                .willReturn(List.of(1L));
+        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
+                .willReturn(List.of());
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(appleTokenClient).should(never()).revoke(any());
+        then(withdrawnMemberPurger).should().purge(List.of(1L));
     }
 
-    private int indexOfTable(List<String> sqls, String table) {
-        return tables(sqls).indexOf(table);
+    @Test
+    @DisplayName("Apple refresh_token을 복호화해서 revoke를 호출하고, 성공하면 파기 대상에 그대로 남긴다")
+    void purge_appleMemberWithCredential_revokesAndKeepsInPurgeTargets() {
+        // given
+        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
+                .willReturn(List.of(1L));
+        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
+                .willReturn(List.of(appleAccount(1L, 10L)));
+        given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
+                .willReturn(List.of(credential(10L, "encrypted")));
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
+        given(appleTokenClient.revoke("plain")).willReturn(true);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(appleTokenClient).should().revoke("plain");
+        then(withdrawnMemberPurger).should().purge(List.of(1L));
+    }
+
+    @Test
+    @DisplayName("revoke에 실패한 회원은 이번 파기 대상에서 제외한다 - 다음 배치가 같은 회원번호로 재시도한다")
+    void purge_revokeFailure_excludesFromPurgeTargets() {
+        // given
+        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
+                .willReturn(List.of(1L, 2L));
+        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
+                .willReturn(List.of(appleAccount(1L, 10L)));
+        given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
+                .willReturn(List.of(credential(10L, "encrypted")));
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
+        given(appleTokenClient.revoke("plain")).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then - memberId=1은 제외되고, Apple 연동이 없던 memberId=2만 파기된다
+        then(withdrawnMemberPurger).should().purge(List.of(2L));
+    }
+
+    @Test
+    @DisplayName("모두 revoke에 실패하면 이번 파기를 건너뛴다")
+    void purge_allRevokeFailed_skipsPurge() {
+        // given
+        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
+                .willReturn(List.of(1L));
+        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
+                .willReturn(List.of(appleAccount(1L, 10L)));
+        given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
+                .willReturn(List.of(credential(10L, "encrypted")));
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
+        given(appleTokenClient.revoke("plain")).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(withdrawnMemberPurger).should(never()).purge(any());
     }
 }

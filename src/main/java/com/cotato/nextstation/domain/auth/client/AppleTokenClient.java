@@ -71,8 +71,9 @@ public class AppleTokenClient {
         }
     }
 
-    // 탈퇴 시 저장해둔 refresh_token을 폐기한다. 이미 폐기된 토큰을 다시 revoke해도 Apple은 보통 200을 반환한다(멱등).
-    public void revoke(String refreshToken) {
+    // 파기 배치에서 저장해둔 refresh_token을 폐기한다. 이미 폐기된 토큰을 다시 revoke해도 Apple은 보통 200을 반환한다(멱등).
+    // 호출자(WithdrawnMemberCleaner)가 삭제보다 먼저 결과를 보고 재시도 대상을 가려야 하므로 예외 대신 boolean으로 알린다.
+    public boolean revoke(String refreshToken) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("client_id", clientId);
         form.add("client_secret", clientSecretGenerator.generate());
@@ -87,9 +88,12 @@ public class AppleTokenClient {
                     .retrieve()
                     .toBodilessEntity();
 
+            log.info("Apple refresh_token revoke 완료");
+            return true;
+
         } catch (RestClientException e) {
             log.warn("Apple refresh_token revoke 실패", e);
-            throw new CustomException(GlobalErrorCode.EXTERNAL_API_ERROR);
+            return false;
         }
     }
 }

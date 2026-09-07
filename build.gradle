@@ -93,6 +93,10 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
+tasks.named('bootRun') {
+	environment dotenv()
+}
+
 tasks.register('placeGeocodingBatch', JavaExec) {
 	group = 'application'
 	description = '수집 장소 데이터를 카카오 API로 보강하는 1회성 배치 (KAKAO_REST_API_KEY, PLACE_SHEET_CSV_URL, PLACE_SPREADSHEET_ID 필요)'
