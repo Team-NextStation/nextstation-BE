@@ -6,7 +6,9 @@ import com.cotato.nextstation.domain.place.dto.request.AdminPlaceCursor;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceImageResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminStationSummaryResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceTagResponse;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
@@ -16,6 +18,7 @@ import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository.Admin
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository.AdminPlaceImageView;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceTagRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository.AdminPlaceTagView;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import com.cotato.nextstation.global.exception.CustomException;
@@ -41,6 +44,7 @@ public class AdminPlaceQueryService {
     private final AdminGuard adminGuard;
     private final AdminPlaceRepository adminPlaceRepository;
     private final PlaceTagMappingRepository placeTagMappingRepository;
+    private final PlaceTagRepository placeTagRepository;
     private final PlaceImageRepository placeImageRepository;
     private final AdminPlaceConverter adminPlaceConverter;
 
@@ -100,11 +104,19 @@ public class AdminPlaceQueryService {
         AdminPlaceDetailView place = adminPlaceRepository.findAdminPlaceDetail(placeId)
                 .orElseThrow(() -> new CustomException(PlaceErrorCode.PLACE_NOT_FOUND));
         Map<Long, List<String>> tagsByPlaceId = loadTags(List.of(placeId));
-        Map<Long, List<String>> imagesByPlaceId = loadImages(List.of(placeId));
+        Map<Long, List<AdminPlaceImageResponse>> imagesByPlaceId = loadImageDetails(List.of(placeId));
         return adminPlaceConverter.toDetailResponse(
                 place,
                 tagsByPlaceId.getOrDefault(placeId, List.of()),
                 imagesByPlaceId.getOrDefault(placeId, List.of()));
+    }
+
+    public List<AdminPlaceTagResponse> getActiveTags(Long memberId) {
+        adminGuard.requireAdmin(memberId);
+
+        return placeTagRepository.findAllByIsActiveTrueOrderByIdAsc().stream()
+                .map(tag -> new AdminPlaceTagResponse(tag.getName(), tag.getName().getLabel()))
+                .toList();
     }
 
     private List<AdminPlaceCardResponse> toCards(List<? extends AdminPlaceView> places) {
@@ -112,7 +124,7 @@ public class AdminPlaceQueryService {
             return List.of();
         }
         List<Long> placeIds = places.stream().map(AdminPlaceView::getPlaceId).toList();
-        return adminPlaceConverter.toCardResponses(places, loadTags(placeIds), loadImages(placeIds));
+        return adminPlaceConverter.toCardResponses(places, loadTags(placeIds), loadImageUrls(placeIds));
     }
 
     private Map<Long, List<String>> loadTags(List<Long> placeIds) {
@@ -123,7 +135,7 @@ public class AdminPlaceQueryService {
                         Collectors.mapping(AdminPlaceTagView::getTagName, Collectors.toList())));
     }
 
-    private Map<Long, List<String>> loadImages(List<Long> placeIds) {
+    private Map<Long, List<String>> loadImageUrls(List<Long> placeIds) {
         return placeImageRepository.findAdminImages(placeIds).stream()
                 .collect(Collectors.groupingBy(
                         AdminPlaceImageView::getPlaceId,
@@ -136,6 +148,15 @@ public class AdminPlaceQueryService {
                 ? List.of(PlaceStatus.values())
                 : statuses;
         return target.stream().map(PlaceStatus::name).toList();
+    }
+
+    private Map<Long, List<AdminPlaceImageResponse>> loadImageDetails(List<Long> placeIds) {
+        return placeImageRepository.findAdminImages(placeIds).stream()
+                .collect(Collectors.groupingBy(
+                        AdminPlaceImageView::getPlaceId,
+                        LinkedHashMap::new,
+                        Collectors.mapping(image -> new AdminPlaceImageResponse(
+                                image.getImageId(), image.getImageUrl()), Collectors.toList())));
     }
 
     private int resolvePageSize(Integer size) {

@@ -89,4 +89,8 @@ public class Place extends BaseTimeEntity {
         this.rejectReason = status == PlaceStatus.REJECTED ? reason : null;
         this.deleteReason = status == PlaceStatus.DELETED ? reason : null;
     }
+
+    public void updateDescription(String description) {
+        this.description = description;
+    }
 }

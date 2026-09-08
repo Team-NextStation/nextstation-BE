@@ -5,9 +5,12 @@ import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceStatusUpdateResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceImageResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceTagResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminStationSummaryResponse;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
+import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.service.command.AdminPlaceCommandService;
 import com.cotato.nextstation.domain.place.service.query.AdminPlaceQueryService;
 import com.cotato.nextstation.domain.place.service.query.KakaoPlaceSearchService;
@@ -31,6 +34,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
 
 import java.util.List;
 
@@ -150,6 +154,19 @@ class AdminPlaceControllerTest {
     }
 
     @Test
+    @DisplayName("관리자 장소 활성 태그 선택지는 코드와 표시명을 반환한다")
+    void getActiveTags_success() throws Exception {
+        given(adminPlaceQueryService.getActiveTags(1L)).willReturn(List.of(
+                new AdminPlaceTagResponse(PlaceTagName.HOTPLACE, "핫플레이스")));
+
+        mockMvc.perform(get("/api/v1/admin/places/tags")
+                        .header("Authorization", "Bearer " + TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].tagName").value("HOTPLACE"))
+                .andExpect(jsonPath("$.data[0].label").value("핫플레이스"));
+    }
+
+    @Test
     @DisplayName("삭제 장소 상세에는 삭제 사유가 반환된다")
     void getPlaceDetail_deletedPlace() throws Exception {
         given(adminPlaceQueryService.getPlaceDetail(1L, 7L)).willReturn(
@@ -265,5 +282,60 @@ class AdminPlaceControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(adminPlaceCommandService, never()).updateStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("관리자 장소 수정은 변경된 상세 정보와 이미지 ID를 반환한다")
+    void updatePlace_success() throws Exception {
+        given(adminPlaceCommandService.updatePlace(eq(1L), eq(7L), any())).willReturn(
+                new AdminPlaceDetailResponse(
+                        7L, "장소", null, 10L, "신림역", "서울시", 127.0, 37.0,
+                        "https://place.map.kakao.com/123", PlaceStatus.APPROVED,
+                        "CAFE", "카페", List.of("HOTPLACE", "INDOOR"), "새 설명",
+                        List.of(new AdminPlaceImageResponse(21L, "image-url")), null, null));
+
+        mockMvc.perform(patch("/api/v1/admin/places/{placeId}", 7L)
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tagNames": ["HOTPLACE", "INDOOR"],
+                                  "description": "새 설명",
+                                  "imageUrls": ["https://bucket/new.jpg"],
+                                  "deleteImageIds": [11]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.description").value("새 설명"))
+                .andExpect(jsonPath("$.data.images[0].imageId").value(21))
+                .andExpect(jsonPath("$.data.images[0].imageUrl").value("image-url"));
+    }
+
+    @Test
+    @DisplayName("관리자 장소 수정 요청에 변경값이 없으면 400이다")
+    void updatePlace_emptyRequest() throws Exception {
+        mockMvc.perform(patch("/api/v1/admin/places/{placeId}", 7L)
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(GlobalErrorCode.VALIDATION_ERROR.getCode()));
+
+        verify(adminPlaceCommandService, never()).updatePlace(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("관리자 장소 수정 태그가 서로 다른 2개가 아니면 400이다")
+    void updatePlace_invalidTags() throws Exception {
+        mockMvc.perform(patch("/api/v1/admin/places/{placeId}", 7L)
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"tagNames": ["HOTPLACE", "HOTPLACE"]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(GlobalErrorCode.VALIDATION_ERROR.getCode()));
+
+        verify(adminPlaceCommandService, never()).updatePlace(any(), any(), any());
     }
 }
