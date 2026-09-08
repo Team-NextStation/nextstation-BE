@@ -47,6 +47,7 @@ app:
 
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
+  admin-key: ${KAKAO_ADMIN_KEY:}
   oauth:
     client-id: ${KAKAO_OAUTH_CLIENT_ID}
     client-secret: ${KAKAO_OAUTH_CLIENT_SECRET}
