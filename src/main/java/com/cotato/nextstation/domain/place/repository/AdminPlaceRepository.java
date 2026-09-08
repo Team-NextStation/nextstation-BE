@@ -39,7 +39,7 @@ public interface AdminPlaceRepository extends Repository<Place, Long> {
             WHERE (:lineId IS NULL OR l.id = :lineId)
               AND (:stationId IS NULL OR s.id = :stationId)
               AND (:categoryCode IS NULL OR c.code = :categoryCode)
-              AND (:status IS NULL OR p.status = :status)
+              AND p.status IN (:statuses)
               AND (:cursorPlaceName IS NULL
                    OR p.place_name > :cursorPlaceName
                    OR (p.place_name = :cursorPlaceName AND p.id > :cursorPlaceId))
@@ -48,7 +48,7 @@ public interface AdminPlaceRepository extends Repository<Place, Long> {
     List<AdminPlaceView> findAdminPlaces(@Param("lineId") Long lineId,
                                          @Param("stationId") Long stationId,
                                          @Param("categoryCode") String categoryCode,
-                                         @Param("status") String status,
+                                         @Param("statuses") List<String> statuses,
                                          @Param("cursorPlaceName") String cursorPlaceName,
                                          @Param("cursorPlaceId") Long cursorPlaceId,
                                          Pageable pageable);

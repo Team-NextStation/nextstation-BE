@@ -35,6 +35,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -73,7 +74,7 @@ class AdminPlaceQueryServiceTest {
         AdminPlaceView first = placeView(1L, "가게");
         AdminPlaceView extra = mock(AdminPlaceView.class);
         given(adminPlaceRepository.findAdminPlaces(
-                eq(3L), eq(10L), eq("CAFE"), eq("APPROVED"),
+                eq(3L), eq(10L), eq("CAFE"), eq(List.of("APPROVED")),
                 eq(null), eq(null), any(Pageable.class)))
                 .willReturn(List.of(first, extra));
         given(adminPlaceRepository.findAdminAvailableLines()).willReturn(List.of());
@@ -91,7 +92,7 @@ class AdminPlaceQueryServiceTest {
         given(adminPlaceConverter.toCardResponses(any(), any(), any())).willReturn(List.of());
 
         AdminPlaceListResponse response = adminPlaceQueryService.getPlaces(
-                ADMIN_ID, 3L, 10L, CategoryCode.CAFE, PlaceStatus.APPROVED, null, 1);
+                ADMIN_ID, 3L, 10L, CategoryCode.CAFE, List.of(PlaceStatus.APPROVED), null, 1);
 
         assertThat(response.hasNext()).isTrue();
         assertThat(response.nextCursor()).isNotBlank();
@@ -107,11 +108,11 @@ class AdminPlaceQueryServiceTest {
         AdminPlaceView extra = placeView(2L, "같은 장소");
         AdminPlaceView afterExtra = mock(AdminPlaceView.class);
         given(adminPlaceRepository.findAdminPlaces(
-                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(null), anyList(),
                 eq(null), eq(null), any(Pageable.class)))
                 .willReturn(List.of(first, extra));
         given(adminPlaceRepository.findAdminPlaces(
-                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(null), anyList(),
                 eq("같은 장소"), eq(1L), any(Pageable.class)))
                 .willReturn(List.of(extra, afterExtra));
         given(adminPlaceRepository.findAdminAvailableLines()).willReturn(List.of());
@@ -124,7 +125,7 @@ class AdminPlaceQueryServiceTest {
         assertThat(firstPage.hasNext()).isTrue();
         assertThat(secondPage.hasNext()).isTrue();
         verify(adminPlaceRepository).findAdminPlaces(
-                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(null), anyList(),
                 eq("같은 장소"), eq(1L), any(Pageable.class));
     }
 

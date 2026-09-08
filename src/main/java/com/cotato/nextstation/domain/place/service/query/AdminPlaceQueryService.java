@@ -49,7 +49,7 @@ public class AdminPlaceQueryService {
     private final AdminPlaceConverter adminPlaceConverter;
 
     public AdminPlaceListResponse getPlaces(Long memberId, Long lineId, Long stationId,
-                                            CategoryCode categoryCode, PlaceStatus status,
+                                            CategoryCode categoryCode, List<PlaceStatus> statuses,
                                             String cursor, Integer size) {
         adminGuard.requireAdmin(memberId);
 
@@ -59,7 +59,7 @@ public class AdminPlaceQueryService {
                 lineId,
                 stationId,
                 categoryCode != null ? categoryCode.name() : null,
-                status != null ? status.name() : null,
+                resolveStatuses(statuses),
                 cursorData != null ? cursorData.placeName() : null,
                 cursorData != null ? cursorData.placeId() : null,
                 PageRequest.of(0, pageSize + 1));
@@ -141,6 +141,13 @@ public class AdminPlaceQueryService {
                         AdminPlaceImageView::getPlaceId,
                         LinkedHashMap::new,
                         Collectors.mapping(AdminPlaceImageView::getImageUrl, Collectors.toList())));
+    }
+
+    private List<String> resolveStatuses(List<PlaceStatus> statuses) {
+        List<PlaceStatus> target = (statuses == null || statuses.isEmpty())
+                ? List.of(PlaceStatus.values())
+                : statuses;
+        return target.stream().map(PlaceStatus::name).toList();
     }
 
     private Map<Long, List<AdminPlaceImageResponse>> loadImageDetails(List<Long> placeIds) {

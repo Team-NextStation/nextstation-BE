@@ -1,8 +1,10 @@
 package com.cotato.nextstation.domain.place.controller;
 
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceStatusUpdateRequest;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceStatusUpdateResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceImageResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceTagResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminStationSummaryResponse;
@@ -18,6 +20,7 @@ import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.exception.GlobalExceptionHandler;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import com.cotato.nextstation.global.jwt.JwtProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +32,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
 
@@ -54,6 +58,8 @@ class AdminPlaceControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @MockitoBean
     private AdminPlaceQueryService adminPlaceQueryService;
@@ -81,7 +87,7 @@ class AdminPlaceControllerTest {
                 7L, line, 10L, "신림역", "CAFE", "카페", "장소명",
                 List.of("INDOOR", "BUDGET"), "한 줄 설명", "image-1", PlaceStatus.APPROVED);
         given(adminPlaceQueryService.getPlaces(
-                1L, 3L, 10L, CategoryCode.CAFE, PlaceStatus.APPROVED, null, 10))
+                1L, 3L, 10L, CategoryCode.CAFE, List.of(PlaceStatus.APPROVED), null, 10))
                 .willReturn(new AdminPlaceListResponse(
                         List.of(line), List.of(new AdminStationSummaryResponse(10L, "신림역")),
                         List.of(card), null, false));
@@ -216,6 +222,66 @@ class AdminPlaceControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(adminPlaceQueryService, never()).getPlaces(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("휴지통은 반려와 삭제 상태를 함께 조회한다")
+    void getPlaces_multipleStatuses() throws Exception {
+        given(adminPlaceQueryService.getPlaces(
+                1L, null, null, null, List.of(PlaceStatus.REJECTED, PlaceStatus.DELETED), null, null))
+                .willReturn(new AdminPlaceListResponse(List.of(), List.of(), List.of(), null, false));
+
+        mockMvc.perform(get("/api/v1/admin/places")
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .param("status", "REJECTED")
+                        .param("status", "DELETED"))
+                .andExpect(status().isOk());
+
+        verify(adminPlaceQueryService).getPlaces(
+                1L, null, null, null, List.of(PlaceStatus.REJECTED, PlaceStatus.DELETED), null, null);
+    }
+
+    @Test
+    @DisplayName("상태 변경은 변경된 장소 ID와 상태를 반환한다")
+    void updatePlaceStatus_success() throws Exception {
+        given(adminPlaceCommandService.updateStatus(eq(1L), eq(7L), any(AdminPlaceStatusUpdateRequest.class)))
+                .willReturn(new AdminPlaceStatusUpdateResponse(7L, PlaceStatus.REJECTED));
+
+        mockMvc.perform(patch("/api/v1/admin/places/{placeId}/status", 7L)
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AdminPlaceStatusUpdateRequest(PlaceStatus.REJECTED, "사진이 기준에 맞지 않음"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.placeId").value(7))
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+    }
+
+    @Test
+    @DisplayName("변경할 상태가 없으면 서비스를 호출하지 않고 400을 반환한다")
+    void updatePlaceStatus_statusRequired() throws Exception {
+        mockMvc.perform(patch("/api/v1/admin/places/{placeId}/status", 7L)
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"사유\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(adminPlaceCommandService, never()).updateStatus(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("사유가 255자를 넘으면 서비스를 호출하지 않고 400을 반환한다")
+    void updatePlaceStatus_reasonTooLong() throws Exception {
+        String reason = "가".repeat(256);
+
+        mockMvc.perform(patch("/api/v1/admin/places/{placeId}/status", 7L)
+                        .header("Authorization", "Bearer " + TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AdminPlaceStatusUpdateRequest(PlaceStatus.REJECTED, reason))))
+                .andExpect(status().isBadRequest());
+
+        verify(adminPlaceCommandService, never()).updateStatus(any(), any(), any());
     }
 
     @Test
