@@ -1,5 +1,9 @@
 package com.cotato.nextstation.domain.member.service;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
 import com.cotato.nextstation.domain.auth.client.KakaoOAuthClient;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
@@ -10,16 +14,20 @@ import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.member.repository.MemberSocialAccountRepository;
 import com.cotato.nextstation.domain.member.repository.SocialOauthCredentialRepository;
 import com.cotato.nextstation.global.security.OAuthRefreshTokenEncryptor;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
@@ -53,6 +61,22 @@ class WithdrawnMemberCleanerTest {
 
     @Mock
     private WithdrawnMemberPurger withdrawnMemberPurger;
+
+    private Logger logger;
+    private ListAppender<ILoggingEvent> logCapture;
+
+    @BeforeEach
+    void setUpLogCapture() {
+        logCapture = new ListAppender<>();
+        logCapture.start();
+        logger = (Logger) LoggerFactory.getLogger(WithdrawnMemberCleaner.class);
+        logger.addAppender(logCapture);
+    }
+
+    @AfterEach
+    void tearDownLogCapture() {
+        logger.detachAppender(logCapture);
+    }
 
     private MemberSocialAccount appleAccount(Long memberId, Long accountId) {
         MemberSocialAccount account = MemberSocialAccount.builder()
@@ -164,6 +188,48 @@ class WithdrawnMemberCleanerTest {
 
         // then - memberId=1은 제외되고, Apple 연동이 없던 memberId=2만 파기된다
         then(withdrawnMemberPurger).should().purge(List.of(2L));
+    }
+
+    @Test
+    @DisplayName("Apple 시도 대상 중 일부만 실패하면 WARN으로 남긴다")
+    void purge_applePartialFailure_logsWarn() {
+        // given
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of(appleAccount(1L, 10L), appleAccount(2L, 20L)));
+        givenKakaoAccounts(List.of());
+        given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
+                .willReturn(List.of(credential(10L, "encrypted-1"), credential(20L, "encrypted-2")));
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted-1")).willReturn("plain-1");
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted-2")).willReturn("plain-2");
+        given(appleTokenClient.revoke("plain-1")).willReturn(false);
+        given(appleTokenClient.revoke("plain-2")).willReturn(true);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        assertThat(logCapture.list).extracting(ILoggingEvent::getLevel).contains(Level.WARN).doesNotContain(Level.ERROR);
+    }
+
+    @Test
+    @DisplayName("Apple 시도 대상 전원이 실패하면 설정 문제로 보고 ERROR로 남긴다")
+    void purge_appleAllFailure_logsError() {
+        // given
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of(appleAccount(1L, 10L), appleAccount(2L, 20L)));
+        givenKakaoAccounts(List.of());
+        given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
+                .willReturn(List.of(credential(10L, "encrypted-1"), credential(20L, "encrypted-2")));
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted-1")).willReturn("plain-1");
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted-2")).willReturn("plain-2");
+        given(appleTokenClient.revoke("plain-1")).willReturn(false);
+        given(appleTokenClient.revoke("plain-2")).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        assertThat(logCapture.list).extracting(ILoggingEvent::getLevel).contains(Level.ERROR);
     }
 
     @Test
