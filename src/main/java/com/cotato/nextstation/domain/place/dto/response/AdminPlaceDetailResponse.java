@@ -55,8 +55,8 @@ public record AdminPlaceDetailResponse(
         @Schema(description = "한 줄 설명", example = "조용히 머물기 좋은 동네 카페")
         String description,
 
-        @Schema(description = "실제 장소 사진 URL 목록. sortOrder 오름차순", nullable = false)
-        List<String> images,
+        @Schema(description = "실제 장소 사진 목록. sortOrder 오름차순", nullable = false)
+        List<AdminPlaceImageResponse> images,
 
         @Schema(description = "삭제 사유. 삭제 장소가 아니면 null", nullable = true)
         String deleteReason,

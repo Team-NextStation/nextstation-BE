@@ -2,6 +2,7 @@ package com.cotato.nextstation.domain.place.converter;
 
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceImageResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminStationSummaryResponse;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository.AdminLineView;
@@ -33,7 +34,7 @@ public class AdminPlaceConverter {
     public AdminPlaceDetailResponse toDetailResponse(
             AdminPlaceDetailView place,
             List<String> tags,
-            List<String> images
+            List<AdminPlaceImageResponse> images
     ) {
         return new AdminPlaceDetailResponse(
                 place.getPlaceId(),

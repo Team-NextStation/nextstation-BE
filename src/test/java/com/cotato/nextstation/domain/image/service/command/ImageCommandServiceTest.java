@@ -272,4 +272,5 @@ class ImageCommandServiceTest {
         assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID))
                 .isInstanceOf(CustomException.class);
     }
+
 }

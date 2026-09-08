@@ -14,6 +14,9 @@ import java.util.Optional;
  */
 public interface AdminPlaceRepository extends Repository<Place, Long> {
 
+    @Query(value = "SELECT * FROM place WHERE id = :placeId FOR UPDATE", nativeQuery = true)
+    Optional<Place> findAdminPlaceForUpdate(@Param("placeId") Long placeId);
+
     /**
      * 컬렉션인 태그와 이미지는 이 쿼리에 조인하지 않고 페이지에 포함된 placeId로 일괄 조회한다.
      */
