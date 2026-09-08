@@ -114,8 +114,6 @@ public class AdminPlaceCommandService {
         }
 
         placeRepository.flush();
-        placeTagMappingRepository.flush();
-        placeImageRepository.flush();
 
         return adminPlaceQueryService.getPlaceDetail(memberId, placeId);
     }
