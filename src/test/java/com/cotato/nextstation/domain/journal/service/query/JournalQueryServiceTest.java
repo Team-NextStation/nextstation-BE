@@ -21,9 +21,12 @@ import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJour
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
+import com.cotato.nextstation.domain.place.entity.PlaceReview;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository.ReviewPlaceView;
 import com.cotato.nextstation.domain.place.service.query.PlaceInfoQueryService;
 import com.cotato.nextstation.domain.stamp.entity.MemberStamp;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
@@ -146,8 +149,10 @@ class JournalQueryServiceTest {
                 .willReturn(new LineSummaryResponse(1L, "우이신설선", null));
         given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(COURSE_ID))
                 .willReturn(List.of(CoursePlace.builder().courseId(COURSE_ID).placeId(PLACE_ID).orderNum(1).build()));
-        given(placeInfoQueryService.getPlaceInfos(anyList())).willReturn(List.of(
-                new PlaceInfoResponse(PLACE_ID, "보문숲길도서관", "설명", "CULTURE", "문화공간", null, 127.123, 37.456)));
+        given(placeInfoQueryService.getHistoricalPlaceInfos(anyList())).willReturn(List.of(
+                new HistoricalPlaceInfoResponse(
+                        PLACE_ID, "보문숲길도서관", "설명", "CULTURE", "문화공간", null,
+                        127.123, 37.456, PlaceStatus.APPROVED)));
         given(placeInfoQueryService.getTopTagNames(anyList())).willReturn(List.of());
         given(journalImageRepository.findByJournalIdOrderByIdAsc(JOURNAL_ID)).willReturn(List.of());
         given(placeReviewRepository.findByJournalId(JOURNAL_ID)).willReturn(List.of());
@@ -170,6 +175,7 @@ class JournalQueryServiceTest {
             assertThat(response.places()).hasSize(1);
             assertThat(response.places().get(0).placeId()).isEqualTo(PLACE_ID);
             assertThat(response.places().get(0).placeName()).isEqualTo("보문숲길도서관");
+            assertThat(response.places().get(0).placeStatus()).isEqualTo(PlaceStatus.APPROVED);
             assertThat(response.places().get(0).orderNum()).isEqualTo(1);
         }
 
@@ -252,7 +258,34 @@ class JournalQueryServiceTest {
             assertThat(response.visitedPlaces()).hasSize(1);
             assertThat(response.visitedPlaces().get(0).xCoordinate()).isEqualTo(127.123);
             assertThat(response.visitedPlaces().get(0).yCoordinate()).isEqualTo(37.456);
+            assertThat(response.visitedPlaces().get(0).placeStatus()).isEqualTo(PlaceStatus.APPROVED);
             verify(courseCommandService).increaseViewCount(COURSE_ID, OTHER_MEMBER_ID);
+        }
+
+        @Test
+        @DisplayName("삭제된 장소와 연결된 리뷰도 장소 상태·리뷰를 유지해 여행일지 상세를 반환한다")
+        void deletedPlaceWithReview_returnsStatusWithoutDereferencingPlaceEntity() {
+            // given: Place 엔티티의 APPROVED 제한 때문에 review.getPlace()는 사용하면 안 된다.
+            PlaceReview review = mock(PlaceReview.class);
+            given(review.getId()).willReturn(501L);
+            given(review.getReview()).willReturn("다시 가고 싶은 곳이에요");
+            ReviewPlaceView reviewPlace = mock(ReviewPlaceView.class);
+            given(reviewPlace.getReviewId()).willReturn(501L);
+            given(reviewPlace.getPlaceId()).willReturn(PLACE_ID);
+            given(placeReviewRepository.findByJournalId(JOURNAL_ID)).willReturn(List.of(review));
+            given(placeReviewRepository.findReviewPlaceIdsByJournalId(JOURNAL_ID)).willReturn(List.of(reviewPlace));
+            given(placeInfoQueryService.getHistoricalPlaceInfos(anyList())).willReturn(List.of(
+                    new HistoricalPlaceInfoResponse(
+                            PLACE_ID, "보문숲길도서관", "설명", "CULTURE", "문화공간", null,
+                            127.123, 37.456, PlaceStatus.DELETED)));
+            given(courseQueryService.isLikedByMember(COURSE_ID, OWNER_ID)).willReturn(false);
+
+            // when
+            JournalDetailResponse response = journalQueryService.getJournalDetail(OWNER_ID, JOURNAL_ID);
+
+            // then
+            assertThat(response.visitedPlaces().get(0).placeStatus()).isEqualTo(PlaceStatus.DELETED);
+            assertThat(response.visitedPlaces().get(0).review()).isEqualTo("다시 가고 싶은 곳이에요");
         }
 
         @Test

@@ -33,6 +33,8 @@ import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.service.query.MemberExistenceQueryService;
 import com.cotato.nextstation.domain.course.dto.response.MemberCourseListResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.service.query.PlaceInfoQueryService;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
 import com.cotato.nextstation.domain.station.entity.LineCode;
@@ -161,7 +163,7 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(
                         coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2), coursePlace(10L, 102L, 3),
                         coursePlace(20L, 200L, 1), coursePlace(20L, 201L, 2)));
-        given(placeInfoQueryService.getPlaceInfos(any())).willReturn(List.of());
+        given(placeInfoQueryService.getHistoricalPlaceInfos(any())).willReturn(List.of());
         given(placeInfoQueryService.getTopTagNames(List.of(100L, 101L, 102L)))
                 .willReturn(List.of("자연과함께", "사진찍기좋은", "가성비"));
         given(placeInfoQueryService.getTopTagNames(List.of(200L, 201L)))
@@ -191,8 +193,9 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2)));
-        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of(
-                new PlaceInfoResponse(100L, "보문골한옥집", "설명", "FOOD", "식당", "cover.jpg", 127.0, 37.5)));
+        given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(100L))).willReturn(List.of(
+                new HistoricalPlaceInfoResponse(
+                        100L, "보문골한옥집", "설명", "FOOD", "식당", "cover.jpg", 127.0, 37.5, PlaceStatus.DELETED)));
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
@@ -213,8 +216,9 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1)));
-        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of(
-                new PlaceInfoResponse(100L, "보문골한옥집", "설명", "FOOD", "식당", null, 127.0, 37.5)));
+        given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(100L))).willReturn(List.of(
+                new HistoricalPlaceInfoResponse(
+                        100L, "보문골한옥집", "설명", "FOOD", "식당", null, 127.0, 37.5, PlaceStatus.APPROVED)));
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
@@ -1082,6 +1086,11 @@ class CourseQueryServiceTest {
         return new PlaceInfoResponse(placeId, "장소" + placeId, "설명", "FOOD", "식당", "img" + placeId, x, y);
     }
 
+    private HistoricalPlaceInfoResponse historicalPlaceInfo(Long placeId, Double x, Double y) {
+        return new HistoricalPlaceInfoResponse(
+                placeId, "장소" + placeId, "설명", "FOOD", "식당", "img" + placeId, x, y, PlaceStatus.APPROVED);
+    }
+
     @Test
     @DisplayName("코스 확인은 역의 대표 호선을 함께 내려준다")
     void getMyCourseDetail_includesLine() {
@@ -1162,13 +1171,13 @@ class CourseQueryServiceTest {
         given(courseRepository.findMyCourseDetail(1L, 1L)).willReturn(Optional.of(view));
         given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(1L))
                 .willReturn(List.of(coursePlace(1L, 20L, 1), coursePlace(1L, 10L, 2)));
-        given(placeInfoQueryService.getPlaceInfos(List.of(20L, 10L)))
-                .willReturn(List.of(placeInfo(10L, 127.1, 37.1), placeInfo(20L, 127.2, 37.2)));
+        given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(20L, 10L)))
+                .willReturn(List.of(historicalPlaceInfo(10L, 127.1, 37.1), historicalPlaceInfo(20L, 127.2, 37.2)));
         given(courseConverter.toCoursePlaceDetailResponse(any(), anyInt())).willAnswer(invocation -> {
-            PlaceInfoResponse place = invocation.getArgument(0);
+            HistoricalPlaceInfoResponse place = invocation.getArgument(0);
             return new CoursePlaceDetailResponse(place.placeId(), place.placeName(), place.description(),
                     place.categoryCode(), place.categoryName(), place.imageUrl(),
-                    place.xCoordinate(), place.yCoordinate(), invocation.getArgument(1));
+                    place.xCoordinate(), place.yCoordinate(), place.placeStatus(), invocation.getArgument(1));
         });
 
         // when
@@ -1190,13 +1199,13 @@ class CourseQueryServiceTest {
         given(courseRepository.findMyCourseDetail(1L, 1L)).willReturn(Optional.of(view));
         given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(1L))
                 .willReturn(List.of(coursePlace(1L, 10L, 1), coursePlace(1L, 99L, 2)));
-        given(placeInfoQueryService.getPlaceInfos(List.of(10L, 99L)))
-                .willReturn(List.of(placeInfo(10L, 127.1, 37.1)));
+        given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(10L, 99L)))
+                .willReturn(List.of(historicalPlaceInfo(10L, 127.1, 37.1)));
         given(courseConverter.toCoursePlaceDetailResponse(any(), anyInt())).willAnswer(invocation -> {
-            PlaceInfoResponse place = invocation.getArgument(0);
+            HistoricalPlaceInfoResponse place = invocation.getArgument(0);
             return new CoursePlaceDetailResponse(place.placeId(), place.placeName(), place.description(),
                     place.categoryCode(), place.categoryName(), place.imageUrl(),
-                    place.xCoordinate(), place.yCoordinate(), invocation.getArgument(1));
+                    place.xCoordinate(), place.yCoordinate(), place.placeStatus(), invocation.getArgument(1));
         });
 
         // when
@@ -1218,7 +1227,7 @@ class CourseQueryServiceTest {
         assertThatThrownBy(() -> courseQueryService.getMyCourseDetail(1L, 1L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(CourseErrorCode.COURSE_NOT_FOUND.getMessage());
-        verify(placeInfoQueryService, never()).getPlaceInfos(any());
+        verify(placeInfoQueryService, never()).getHistoricalPlaceInfos(any());
     }
 
     @Test
@@ -1233,7 +1242,7 @@ class CourseQueryServiceTest {
         courseQueryService.getMyCourseDetail(1L, 1L);
 
         // then: 빈 id 목록으로 장소를 조회하지 않는다
-        verify(placeInfoQueryService, never()).getPlaceInfos(any());
+        verify(placeInfoQueryService, never()).getHistoricalPlaceInfos(any());
         verify(courseConverter).toMyCourseDetailResponse(view, List.of());
     }
 

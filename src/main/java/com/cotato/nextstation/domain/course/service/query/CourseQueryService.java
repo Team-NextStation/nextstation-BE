@@ -38,6 +38,7 @@ import com.cotato.nextstation.domain.journal.enums.TravelDuration;
 import com.cotato.nextstation.domain.journal.service.query.JournalCardQueryService;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.service.query.MemberExistenceQueryService;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
 import com.cotato.nextstation.domain.place.service.query.PlaceInfoQueryService;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
@@ -550,14 +551,10 @@ public class CourseQueryService {
         }
 
         List<Long> placeIds = coursePlaces.stream().map(CoursePlace::getPlaceId).toList();
-        Map<Long, PlaceInfoResponse> placeById = placeInfoQueryService.getPlaceInfos(placeIds).stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, place -> place));
+        Map<Long, HistoricalPlaceInfoResponse> placeById = placeInfoQueryService.getHistoricalPlaceInfos(placeIds).stream()
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, place -> place));
 
-        // 코스에 담긴 장소가 조회되지 않는 건 데이터 정합성이 깨진 상태다(장소 재시딩 등).
-        // 조용히 빠지면 아무도 모르는 데다, 그 코스는 순서 변경 저장까지 막힌다.
-        // PATCH /courses/{courseId}가 기존 장소 구성과 정확히 일치할 것을 요구하는데,
-        // 프론트는 빠진 장소를 모른 채 남은 것만 보내서 INVALID_COURSE_PLACES가 된다.
-        // 실제로 찍히면 course_places를 정리해야 한다.
+        // 장소가 실제로 사라진 경우만 누락으로 본다. 반려·삭제는 historical 조회가 상태와 함께 반환한다.
         if (placeById.size() != coursePlaces.size()) {
             List<Long> missingPlaceIds = placeIds.stream()
                     .filter(placeId -> !placeById.containsKey(placeId))
@@ -566,7 +563,7 @@ public class CourseQueryService {
                     coursePlaces.get(0).getCourseId(), missingPlaceIds);
         }
 
-        // 조회되지 않은 장소는 지도 핀도 못 찍고 목록에도 채울 내용이 없어 제외한다.
+        // 실제로 삭제된 레코드는 지도 핀과 목록을 채울 정보가 없어 제외한다.
         return coursePlaces.stream()
                 .filter(coursePlace -> placeById.containsKey(coursePlace.getPlaceId()))
                 .map(coursePlace -> courseConverter.toCoursePlaceDetailResponse(
@@ -620,7 +617,7 @@ public class CourseQueryService {
                 ));
     }
 
-    // 카드 배경은 코스의 첫 장소 이미지를 쓴다. 장소 이미지가 없을 때의 폴백은 장소 조회 쪽에서 처리된다.
+    // 카드 배경은 코스의 첫 장소 이미지를 쓴다. 이미 저장된 코스는 비승인 장소여도 기록의 맥락을 유지한다.
     private Map<Long, String> resolveCoverImages(Map<Long, List<Long>> placeIdsByCourse) {
         Map<Long, Long> firstPlaceByCourse = new LinkedHashMap<>();
         placeIdsByCourse.forEach((courseId, placeIds) -> {
@@ -632,10 +629,10 @@ public class CourseQueryService {
             return Map.of();
         }
 
-        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getPlaceInfos(List.copyOf(firstPlaceByCourse.values()))
+        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getHistoricalPlaceInfos(List.copyOf(firstPlaceByCourse.values()))
                 .stream()
                 .filter(place -> place.imageUrl() != null)
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, PlaceInfoResponse::imageUrl));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, HistoricalPlaceInfoResponse::imageUrl));
 
         Map<Long, String> result = new LinkedHashMap<>();
         firstPlaceByCourse.forEach((courseId, placeId) -> result.put(courseId, imageUrlByPlace.get(placeId)));

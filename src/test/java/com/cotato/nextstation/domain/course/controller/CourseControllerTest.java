@@ -12,6 +12,7 @@ import com.cotato.nextstation.domain.course.dto.response.CourseCopyPreviewRespon
 import com.cotato.nextstation.domain.course.dto.response.CourseShareResponse;
 import com.cotato.nextstation.domain.course.dto.response.CourseUpdateResponse;
 import com.cotato.nextstation.domain.course.exception.CourseErrorCode;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.course.service.command.CourseCommandService;
 import com.cotato.nextstation.domain.course.service.command.CourseLikeCommandService;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
@@ -370,7 +371,7 @@ class CourseControllerTest {
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6),
                         List.of(new CoursePlaceDetailResponse(11L, "보문숲길도서관",
                                 "혼자 조용히 머물기 좋은 동네 도서관", "CULTURE", "문화공간",
-                                null, 127.0345, 37.5804, 1))));
+                                null, 127.0345, 37.5804, PlaceStatus.APPROVED, 1))));
 
         mockMvc.perform(get("/api/v1/courses/{courseId}/copy-preview", 7L)
                         .header("Authorization", "Bearer " + TOKEN))
@@ -382,6 +383,7 @@ class CourseControllerTest {
                 // 이 화면 카드의 부제로 쓰는 값이라 빠지면 안 된다
                 .andExpect(jsonPath("$.data.places[0].description").value("혼자 조용히 머물기 좋은 동네 도서관"))
                 .andExpect(jsonPath("$.data.places[0].xCoordinate").value(127.0345))
+                .andExpect(jsonPath("$.data.places[0].placeStatus").value("APPROVED"))
                 .andExpect(jsonPath("$.data.places[0].orderNum").value(1));
     }
 
@@ -405,7 +407,7 @@ class CourseControllerTest {
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6),
                         List.of(new CoursePlaceDetailResponse(11L, "보문숲길도서관",
                                 "혼자 조용히 머물기 좋은 동네 도서관", "CULTURE", "문화공간",
-                                null, 127.0345, 37.5804, 1))));
+                                null, 127.0345, 37.5804, PlaceStatus.APPROVED, 1))));
 
         mockMvc.perform(get("/api/v1/courses/share/{shareToken}", "share-token-7"))
                 .andExpect(status().isOk())

@@ -21,7 +21,7 @@ import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.CourseSnapshotView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJournalCardView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
 import com.cotato.nextstation.domain.place.entity.PlaceReviewImage;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
@@ -92,9 +92,9 @@ public class JournalQueryService {
                 .toList();
 
         // 5. placeIds → 장소 이름
-        Map<Long, PlaceInfoResponse> placeInfoMap = placeInfoQueryService.getPlaceInfos(placeIds)
+        Map<Long, HistoricalPlaceInfoResponse> placeInfoMap = placeInfoQueryService.getHistoricalPlaceInfos(placeIds)
                 .stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, Function.identity()));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, Function.identity()));
 
         // 6. placeIds → 태그 상위 3개
         List<String> tags = placeInfoQueryService.getTopTagNames(placeIds);
@@ -270,9 +270,9 @@ public class JournalQueryService {
                 .toList();
 
         // 7. placeIds → 장소 이름
-        Map<Long, PlaceInfoResponse> placeInfoMap = placeInfoQueryService.getPlaceInfos(placeIds)
+        Map<Long, HistoricalPlaceInfoResponse> placeInfoMap = placeInfoQueryService.getHistoricalPlaceInfos(placeIds)
                 .stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, Function.identity()));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, Function.identity()));
 
         // 8. placeIds → 태그 상위 3개
         List<String> tags = placeInfoQueryService.getTopTagNames(placeIds);
@@ -283,8 +283,17 @@ public class JournalQueryService {
 
         // 10. journalId → 장소 리뷰 + 리뷰 이미지
         List<PlaceReview> placeReviews = placeReviewRepository.findByJournalId(journalId);
+        Map<Long, Long> placeIdByReviewId = placeReviewRepository.findReviewPlaceIdsByJournalId(journalId).stream()
+                .collect(Collectors.toMap(
+                        PlaceReviewRepository.ReviewPlaceView::getReviewId,
+                        PlaceReviewRepository.ReviewPlaceView::getPlaceId
+                ));
         Map<Long, PlaceReview> reviewByPlaceId = placeReviews.stream()
-                .collect(Collectors.toMap(pr -> pr.getPlace().getId(), Function.identity()));
+                .filter(review -> placeIdByReviewId.containsKey(review.getId()))
+                .collect(Collectors.toMap(
+                        review -> placeIdByReviewId.get(review.getId()),
+                        Function.identity()
+                ));
 
         List<Long> reviewIds = placeReviews.stream().map(PlaceReview::getId).toList();
         Map<Long, String> imageUrlByReviewId = placeReviewImageRepository

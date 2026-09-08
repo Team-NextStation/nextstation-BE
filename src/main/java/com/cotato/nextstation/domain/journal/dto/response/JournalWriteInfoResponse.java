@@ -1,7 +1,7 @@
 package com.cotato.nextstation.domain.journal.dto.response;
 
 import com.cotato.nextstation.domain.course.dto.response.CoursePlaceInfoResponse;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -25,6 +25,7 @@ public record JournalWriteInfoResponse(
     public record PlaceSimpleResponse(
             Long placeId,
             String placeName,
+            PlaceStatus placeStatus,
             int orderNum
     ) {}
 }
