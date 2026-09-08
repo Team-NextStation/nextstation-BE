@@ -163,7 +163,7 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(
                         coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2), coursePlace(10L, 102L, 3),
                         coursePlace(20L, 200L, 1), coursePlace(20L, 201L, 2)));
-        given(placeInfoQueryService.getHistoricalPlaceInfos(any())).willReturn(List.of());
+        given(placeInfoQueryService.getPlaceInfos(any())).willReturn(List.of());
         given(placeInfoQueryService.getTopTagNames(List.of(100L, 101L, 102L)))
                 .willReturn(List.of("자연과함께", "사진찍기좋은", "가성비"));
         given(placeInfoQueryService.getTopTagNames(List.of(200L, 201L)))
@@ -185,7 +185,7 @@ class CourseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("카드 배경은 코스의 첫 번째 장소 이미지를 쓴다")
+    @DisplayName("카드 배경은 승인된 첫 번째 장소 이미지만 쓴다")
     void getCoursesByPlace_coverImage() {
         // given: 10번 코스의 첫 장소는 order_num이 가장 작은 100번
         PlaceCourseView view10 = placeCourseView(10L);
@@ -193,9 +193,8 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2)));
-        given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(100L))).willReturn(List.of(
-                new HistoricalPlaceInfoResponse(
-                        100L, "보문골한옥집", "설명", "FOOD", "식당", "cover.jpg", 127.0, 37.5, PlaceStatus.DELETED)));
+        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of(
+                new PlaceInfoResponse(100L, "보문골한옥집", "설명", "FOOD", "식당", "cover.jpg", 127.0, 37.5)));
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
@@ -208,6 +207,27 @@ class CourseQueryServiceTest {
     }
 
     @Test
+    @DisplayName("첫 장소가 비승인 상태면 공개 코스 카드 대표 이미지를 비운다")
+    void getCoursesByPlace_doesNotUseUnapprovedPlaceImage() {
+        // given: 일반 장소 조회는 @SQLRestriction으로 비승인 장소를 반환하지 않는다.
+        PlaceCourseView view10 = placeCourseView(10L);
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+                .willReturn(List.of(view10));
+        given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
+                .willReturn(List.of(coursePlace(10L, 100L, 1)));
+        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of());
+        given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
+
+        // when
+        courseQueryService.getCoursesByPlace(1L);
+
+        // then
+        ArgumentCaptor<String> imageCaptor = ArgumentCaptor.forClass(String.class);
+        verify(courseConverter).toPlaceCourseResponse(any(), anyInt(), any(), imageCaptor.capture(), any());
+        assertThat(imageCaptor.getValue()).isNull();
+    }
+
+    @Test
     @DisplayName("장소 이미지가 없으면 배경 이미지는 null로 내려간다")
     void getCoursesByPlace_noCoverImage() {
         // given: 이미지가 아직 없는 장소 (장소 이미지·카테고리 기본 이미지 모두 없음)
@@ -216,9 +236,8 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1)));
-        given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(100L))).willReturn(List.of(
-                new HistoricalPlaceInfoResponse(
-                        100L, "보문골한옥집", "설명", "FOOD", "식당", null, 127.0, 37.5, PlaceStatus.APPROVED)));
+        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of(
+                new PlaceInfoResponse(100L, "보문골한옥집", "설명", "FOOD", "식당", null, 127.0, 37.5)));
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when

@@ -617,7 +617,7 @@ public class CourseQueryService {
                 ));
     }
 
-    // 카드 배경은 코스의 첫 장소 이미지를 쓴다. 이미 저장된 코스는 비승인 장소여도 기록의 맥락을 유지한다.
+    // 공개 코스 카드의 배경은 승인된 첫 장소 이미지만 사용한다.
     private Map<Long, String> resolveCoverImages(Map<Long, List<Long>> placeIdsByCourse) {
         Map<Long, Long> firstPlaceByCourse = new LinkedHashMap<>();
         placeIdsByCourse.forEach((courseId, placeIds) -> {
@@ -629,10 +629,10 @@ public class CourseQueryService {
             return Map.of();
         }
 
-        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getHistoricalPlaceInfos(List.copyOf(firstPlaceByCourse.values()))
+        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getPlaceInfos(List.copyOf(firstPlaceByCourse.values()))
                 .stream()
                 .filter(place -> place.imageUrl() != null)
-                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, HistoricalPlaceInfoResponse::imageUrl));
+                .collect(Collectors.toMap(PlaceInfoResponse::placeId, PlaceInfoResponse::imageUrl));
 
         Map<Long, String> result = new LinkedHashMap<>();
         firstPlaceByCourse.forEach((courseId, placeId) -> result.put(courseId, imageUrlByPlace.get(placeId)));
