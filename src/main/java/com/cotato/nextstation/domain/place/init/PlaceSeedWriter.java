@@ -7,6 +7,7 @@ import com.cotato.nextstation.domain.place.entity.PlaceTag;
 import com.cotato.nextstation.domain.place.entity.PlaceTagMapping;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.ImageSourceType;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.repository.CategoryRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
@@ -106,6 +107,8 @@ class PlaceSeedWriter {
                             .xCoordinate(row.xCoordinate())
                             .yCoordinate(row.yCoordinate())
                             .kakaoPlaceId(row.kakaoPlaceId())
+                            // 시딩 데이터는 검수를 거친 것이라 바로 노출한다
+                            .status(PlaceStatus.APPROVED)
                             .build()
             );
             placeCount++;

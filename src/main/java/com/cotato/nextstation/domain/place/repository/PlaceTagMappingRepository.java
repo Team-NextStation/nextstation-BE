@@ -12,6 +12,10 @@ import java.util.List;
 
 public interface PlaceTagMappingRepository extends JpaRepository<PlaceTagMapping, Long> {
 
+    @Modifying
+    @Query(value = "DELETE FROM place_tag_mapping WHERE place_id = :placeId", nativeQuery = true)
+    void deleteAdminMappingsByPlaceId(@Param("placeId") Long placeId);
+
     // 장소 상세 조회 - 이 장소의 태그 전부 조회 (표시용)
     @EntityGraph(attributePaths = {"placeTag"})
     List<PlaceTagMapping> findByPlace(Place place);
@@ -27,4 +31,18 @@ public interface PlaceTagMappingRepository extends JpaRepository<PlaceTagMapping
 
     @EntityGraph(attributePaths = {"place", "placeTag"})
     List<PlaceTagMapping> findByPlaceTagNameIn(List<PlaceTagName> tagNames);
+
+    @Query(value = """
+            SELECT ptm.place_id AS placeId, pt.name AS tagName
+            FROM place_tag_mapping ptm
+            JOIN place_tag pt ON pt.id = ptm.place_tag_id
+            WHERE ptm.place_id IN (:placeIds)
+            ORDER BY ptm.place_id, ptm.id
+            """, nativeQuery = true)
+    List<AdminPlaceTagView> findAdminTags(@Param("placeIds") List<Long> placeIds);
+
+    interface AdminPlaceTagView {
+        Long getPlaceId();
+        String getTagName();
+    }
 }

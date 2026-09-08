@@ -3,6 +3,8 @@ package com.cotato.nextstation.domain.place.repository;
 import com.cotato.nextstation.domain.place.entity.Place;
 import com.cotato.nextstation.domain.place.entity.PlaceImage;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface PlaceImageRepository extends JpaRepository<PlaceImage, Long> {
@@ -11,5 +13,27 @@ public interface PlaceImageRepository extends JpaRepository<PlaceImage, Long> {
     List<PlaceImage> findByPlaceOrderBySortOrderAsc(Place place);
 
     List<PlaceImage> findByPlaceIdIn(List<Long> placeIds);
+
+    @Query(value = """
+            SELECT *
+            FROM place_image
+            WHERE place_id = :placeId
+            ORDER BY sort_order, id
+            """, nativeQuery = true)
+    List<PlaceImage> findAdminImagesByPlaceId(@Param("placeId") Long placeId);
+
+    @Query(value = """
+            SELECT pi.id AS imageId, pi.place_id AS placeId, pi.image_url AS imageUrl
+            FROM place_image pi
+            WHERE pi.place_id IN (:placeIds)
+            ORDER BY pi.place_id, pi.sort_order, pi.id
+            """, nativeQuery = true)
+    List<AdminPlaceImageView> findAdminImages(@Param("placeIds") List<Long> placeIds);
+
+    interface AdminPlaceImageView {
+        Long getImageId();
+        Long getPlaceId();
+        String getImageUrl();
+    }
 
 }

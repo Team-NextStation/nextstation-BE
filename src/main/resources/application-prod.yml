@@ -51,6 +51,8 @@ aws:
     bucket-name: ${AWS_S3_BUCKET_NAME}
 
 kakao:
+  admin-key: ${KAKAO_ADMIN_KEY}
+  rest-api-key: ${KAKAO_REST_API_KEY}
   oauth:
     client-id: ${KAKAO_OAUTH_CLIENT_ID}
     client-secret: ${KAKAO_OAUTH_CLIENT_SECRET}

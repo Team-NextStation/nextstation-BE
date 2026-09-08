@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.member.service;
 
 import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
+import com.cotato.nextstation.domain.auth.client.KakaoOAuthClient;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
@@ -48,6 +49,9 @@ class WithdrawnMemberCleanerTest {
     private AppleTokenClient appleTokenClient;
 
     @Mock
+    private KakaoOAuthClient kakaoOAuthClient;
+
+    @Mock
     private WithdrawnMemberPurger withdrawnMemberPurger;
 
     private MemberSocialAccount appleAccount(Long memberId, Long accountId) {
@@ -68,34 +72,58 @@ class WithdrawnMemberCleanerTest {
                 .build();
     }
 
+    private MemberSocialAccount kakaoAccount(Long memberId, String providerUserId) {
+        return MemberSocialAccount.builder()
+                .memberId(memberId)
+                .provider(AuthProvider.KAKAO)
+                .providerUserId(providerUserId)
+                .build();
+    }
+
+    private void givenTargets(List<Long> memberIds) {
+        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
+                .willReturn(memberIds);
+    }
+
+    private void givenAppleAccounts(List<MemberSocialAccount> accounts) {
+        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
+                .willReturn(accounts);
+    }
+
+    private void givenKakaoAccounts(List<MemberSocialAccount> accounts) {
+        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.KAKAO)))
+                .willReturn(accounts);
+    }
+
     @Test
     @DisplayName("대상이 없으면 아무것도 하지 않는다")
     void purge_noTargets() {
         // given
-        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
-                .willReturn(List.of());
+        givenTargets(List.of());
 
         // when
         withdrawnMemberCleaner.purgeExpiredWithdrawals();
 
         // then
         then(withdrawnMemberPurger).should(never()).purge(any());
+        then(appleTokenClient).shouldHaveNoInteractions();
+        then(kakaoOAuthClient).shouldHaveNoInteractions();
     }
 
     @Test
-    @DisplayName("Apple 연동이 없는 회원은 revoke 없이 그대로 파기 대상에 넘긴다")
-    void purge_nonAppleMember_skipsRevoke() {
+    @DisplayName("소셜 연동이 없는 회원은 해제 없이 그대로 파기 대상에 넘긴다")
+    void purge_localMembers_skipsRevoke() {
         // given
-        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
-                .willReturn(List.of(1L));
-        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
-                .willReturn(List.of());
+        givenTargets(List.of(1L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of());
 
         // when
         withdrawnMemberCleaner.purgeExpiredWithdrawals();
 
         // then
         then(appleTokenClient).should(never()).revoke(any());
+        then(kakaoOAuthClient).should(never()).unlink(any());
         then(withdrawnMemberPurger).should().purge(List.of(1L));
     }
 
@@ -103,10 +131,9 @@ class WithdrawnMemberCleanerTest {
     @DisplayName("Apple refresh_token을 복호화해서 revoke를 호출하고, 성공하면 파기 대상에 그대로 남긴다")
     void purge_appleMemberWithCredential_revokesAndKeepsInPurgeTargets() {
         // given
-        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
-                .willReturn(List.of(1L));
-        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
-                .willReturn(List.of(appleAccount(1L, 10L)));
+        givenTargets(List.of(1L));
+        givenAppleAccounts(List.of(appleAccount(1L, 10L)));
+        givenKakaoAccounts(List.of());
         given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
                 .willReturn(List.of(credential(10L, "encrypted")));
         given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
@@ -121,13 +148,12 @@ class WithdrawnMemberCleanerTest {
     }
 
     @Test
-    @DisplayName("revoke에 실패한 회원은 이번 파기 대상에서 제외한다 - 다음 배치가 같은 회원번호로 재시도한다")
-    void purge_revokeFailure_excludesFromPurgeTargets() {
+    @DisplayName("Apple revoke에 실패한 회원은 이번 파기 대상에서 제외한다 - 다음 배치가 같은 회원번호로 재시도한다")
+    void purge_appleRevokeFailure_excludesFromPurgeTargets() {
         // given
-        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
-                .willReturn(List.of(1L, 2L));
-        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
-                .willReturn(List.of(appleAccount(1L, 10L)));
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of(appleAccount(1L, 10L)));
+        givenKakaoAccounts(List.of());
         given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
                 .willReturn(List.of(credential(10L, "encrypted")));
         given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
@@ -141,13 +167,68 @@ class WithdrawnMemberCleanerTest {
     }
 
     @Test
-    @DisplayName("모두 revoke에 실패하면 이번 파기를 건너뛴다")
-    void purge_allRevokeFailed_skipsPurge() {
+    @DisplayName("카카오 연결을 해제한 뒤 파기한다")
+    void purge_kakaoUnlinksBeforeDelete() {
         // given
-        given(memberRepository.findIdsByStatusAndDeletedAtBefore(eq(MemberStatus.WITHDRAWN), any()))
-                .willReturn(List.of(1L));
-        given(memberSocialAccountRepository.findByMemberIdInAndProvider(anyCollection(), eq(AuthProvider.APPLE)))
-                .willReturn(List.of(appleAccount(1L, 10L)));
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of(kakaoAccount(1L, "kakao-1"), kakaoAccount(2L, "kakao-2")));
+        given(kakaoOAuthClient.unlink("kakao-1")).willReturn(true);
+        given(kakaoOAuthClient.unlink("kakao-2")).willReturn(true);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(kakaoOAuthClient).should().unlink("kakao-1");
+        then(kakaoOAuthClient).should().unlink("kakao-2");
+        then(withdrawnMemberPurger).should().purge(List.of(1L, 2L));
+    }
+
+    @Test
+    @DisplayName("카카오 연결 해제에 실패한 회원만 파기 대상에서 빠진다")
+    void purge_kakaoUnlinkFailure_excludesFromPurgeTargets() {
+        // given
+        givenTargets(List.of(1L, 2L, 3L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of(kakaoAccount(1L, "kakao-1"), kakaoAccount(2L, "kakao-2")));
+        given(kakaoOAuthClient.unlink("kakao-1")).willReturn(true);
+        given(kakaoOAuthClient.unlink("kakao-2")).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then - 실패한 2번만 빠지고, 소셜 연동이 없는 3번은 그대로 파기된다
+        then(withdrawnMemberPurger).should().purge(List.of(1L, 3L));
+    }
+
+    @Test
+    @DisplayName("Apple/카카오 중 하나라도 해제 실패한 회원이 있으면 그 회원만 빠지고 나머지는 함께 파기된다")
+    void purge_mixedProviders_excludesOnlyFailedOnes() {
+        // given
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of(appleAccount(1L, 10L)));
+        givenKakaoAccounts(List.of(kakaoAccount(2L, "kakao-2")));
+        given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
+                .willReturn(List.of(credential(10L, "encrypted")));
+        given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
+        given(appleTokenClient.revoke("plain")).willReturn(true);
+        given(kakaoOAuthClient.unlink("kakao-2")).willReturn(true);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(withdrawnMemberPurger).should().purge(List.of(1L, 2L));
+    }
+
+    @Test
+    @DisplayName("모두 해제에 실패하면 이번 파기를 건너뛴다")
+    void purge_allFailed_skipsPurge() {
+        // given
+        givenTargets(List.of(1L));
+        givenAppleAccounts(List.of(appleAccount(1L, 10L)));
+        givenKakaoAccounts(List.of());
         given(socialOauthCredentialRepository.findByMemberSocialAccountIdIn(anyCollection()))
                 .willReturn(List.of(credential(10L, "encrypted")));
         given(oAuthRefreshTokenEncryptor.decrypt("encrypted")).willReturn("plain");
@@ -156,7 +237,7 @@ class WithdrawnMemberCleanerTest {
         // when
         withdrawnMemberCleaner.purgeExpiredWithdrawals();
 
-        // then
+        // then - 빈 목록으로 파기를 호출하면 IN () 이 되어 SQL이 깨진다
         then(withdrawnMemberPurger).should(never()).purge(any());
     }
 }
