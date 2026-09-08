@@ -185,7 +185,7 @@ class CourseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("카드 배경은 승인된 첫 번째 장소 이미지만 쓴다")
+    @DisplayName("카드 배경은 코스 순서상 첫 승인 장소 이미지를 쓴다")
     void getCoursesByPlace_coverImage() {
         // given: 10번 코스의 첫 장소는 order_num이 가장 작은 100번
         PlaceCourseView view10 = placeCourseView(10L);
@@ -193,7 +193,7 @@ class CourseQueryServiceTest {
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2)));
-        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of(
+        given(placeInfoQueryService.getPlaceInfos(List.of(100L, 101L))).willReturn(List.of(
                 new PlaceInfoResponse(100L, "보문골한옥집", "설명", "FOOD", "식당", "cover.jpg", 127.0, 37.5)));
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
@@ -207,15 +207,16 @@ class CourseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("첫 장소가 비승인 상태면 공개 코스 카드 대표 이미지를 비운다")
-    void getCoursesByPlace_doesNotUseUnapprovedPlaceImage() {
-        // given: 일반 장소 조회는 @SQLRestriction으로 비승인 장소를 반환하지 않는다.
+    @DisplayName("첫 장소가 비승인이면 다음 승인 장소 이미지를 공개 코스 카드 대표로 사용한다")
+    void getCoursesByPlace_usesNextApprovedPlaceImage() {
+        // given: 일반 장소 조회는 @SQLRestriction으로 비승인 첫 장소를 반환하지 않는다.
         PlaceCourseView view10 = placeCourseView(10L);
         given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
-                .willReturn(List.of(coursePlace(10L, 100L, 1)));
-        given(placeInfoQueryService.getPlaceInfos(List.of(100L))).willReturn(List.of());
+                .willReturn(List.of(coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2)));
+        given(placeInfoQueryService.getPlaceInfos(List.of(100L, 101L))).willReturn(List.of(
+                new PlaceInfoResponse(101L, "보문사", "설명", "CULTURE", "문화공간", "second.jpg", 127.0, 37.5)));
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
@@ -224,7 +225,7 @@ class CourseQueryServiceTest {
         // then
         ArgumentCaptor<String> imageCaptor = ArgumentCaptor.forClass(String.class);
         verify(courseConverter).toPlaceCourseResponse(any(), anyInt(), any(), imageCaptor.capture(), any());
-        assertThat(imageCaptor.getValue()).isNull();
+        assertThat(imageCaptor.getValue()).isEqualTo("second.jpg");
     }
 
     @Test

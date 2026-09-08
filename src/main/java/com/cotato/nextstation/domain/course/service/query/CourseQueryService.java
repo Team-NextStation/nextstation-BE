@@ -60,6 +60,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -617,25 +618,27 @@ public class CourseQueryService {
                 ));
     }
 
-    // 공개 코스 카드의 배경은 승인된 첫 장소 이미지만 사용한다.
+    // 공개 코스 카드의 배경은 코스 순서상 첫 승인 장소 이미지를 사용한다.
     private Map<Long, String> resolveCoverImages(Map<Long, List<Long>> placeIdsByCourse) {
-        Map<Long, Long> firstPlaceByCourse = new LinkedHashMap<>();
-        placeIdsByCourse.forEach((courseId, placeIds) -> {
-            if (!placeIds.isEmpty()) {
-                firstPlaceByCourse.put(courseId, placeIds.get(0));
-            }
-        });
-        if (firstPlaceByCourse.isEmpty()) {
+        List<Long> candidatePlaceIds = placeIdsByCourse.values().stream()
+                .flatMap(List::stream)
+                .distinct()
+                .toList();
+        if (candidatePlaceIds.isEmpty()) {
             return Map.of();
         }
 
-        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getPlaceInfos(List.copyOf(firstPlaceByCourse.values()))
+        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getPlaceInfos(candidatePlaceIds)
                 .stream()
                 .filter(place -> place.imageUrl() != null)
                 .collect(Collectors.toMap(PlaceInfoResponse::placeId, PlaceInfoResponse::imageUrl));
 
         Map<Long, String> result = new LinkedHashMap<>();
-        firstPlaceByCourse.forEach((courseId, placeId) -> result.put(courseId, imageUrlByPlace.get(placeId)));
+        placeIdsByCourse.forEach((courseId, placeIds) -> result.put(courseId, placeIds.stream()
+                .map(imageUrlByPlace::get)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null)));
         return result;
     }
 
