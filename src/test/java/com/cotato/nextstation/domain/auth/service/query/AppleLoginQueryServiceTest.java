@@ -123,6 +123,15 @@ class AppleLoginQueryServiceTest {
                 .build();
     }
 
+    // 서명 없이 payload만 있는 JWT 형태 - JwtSubjectReader는 서명을 검증하지 않으므로 테스트 목적엔 이걸로 충분하다.
+    private String fakeIdToken(String subject) {
+        String header = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"RS256\"}".getBytes());
+        String payload = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(("{\"sub\":\"" + subject + "\"}").getBytes());
+        return header + "." + payload + ".signature";
+    }
+
     @Test
     @DisplayName("처음 보는 Apple 계정이면 Member를 만들지 않고 appleSignupToken을 발급한다")
     void login_newMember() {
@@ -175,7 +184,7 @@ class AppleLoginQueryServiceTest {
         given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
                 .willReturn("apple-signup-token");
         given(appleTokenClient.exchangeAuthorizationCode(AUTHORIZATION_CODE))
-                .willReturn(new AppleTokenResponse("access-token", "bearer", 3600, "raw-refresh-token", IDENTITY_TOKEN));
+                .willReturn(new AppleTokenResponse("access-token", "bearer", 3600, "raw-refresh-token", fakeIdToken(PROVIDER_USER_ID)));
         given(oAuthRefreshTokenEncryptor.encrypt("raw-refresh-token")).willReturn("encrypted-refresh-token");
 
         // when
@@ -183,6 +192,28 @@ class AppleLoginQueryServiceTest {
 
         // then
         then(pendingAppleCredentialRepository).should().save(PROVIDER_USER_ID, "encrypted-refresh-token");
+    }
+
+    @Test
+    @DisplayName("교환 응답의 id_token sub가 예상 providerUserId와 다르면 캐싱하지 않는다(교차 오염 방지)")
+    void login_newMember_subjectMismatch_skipsCaching() {
+        // given
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
+        given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
+                .willReturn(Optional.empty());
+        given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
+                .willReturn("apple-signup-token");
+        given(appleTokenClient.exchangeAuthorizationCode(AUTHORIZATION_CODE))
+                .willReturn(new AppleTokenResponse("access-token", "bearer", 3600, "raw-refresh-token",
+                        fakeIdToken("000999.other-provider-user-id.0999")));
+
+        // when
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, AUTHORIZATION_CODE);
+
+        // then
+        assertThat(result.resultType()).isEqualTo(AppleLoginResultType.NEW_MEMBER);
+        then(pendingAppleCredentialRepository).should(never()).save(any(), any());
+        then(oAuthRefreshTokenEncryptor).shouldHaveNoInteractions();
     }
 
     @Test

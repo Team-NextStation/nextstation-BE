@@ -11,6 +11,7 @@ import com.cotato.nextstation.domain.auth.service.IssuedTokens;
 import com.cotato.nextstation.domain.auth.service.result.AppleLoginResult;
 import com.cotato.nextstation.domain.auth.service.result.AppleLoginResultType;
 import com.cotato.nextstation.domain.auth.util.AppleSignupTokenClaims;
+import com.cotato.nextstation.domain.auth.util.JwtSubjectReader;
 import com.cotato.nextstation.domain.auth.util.SignupTokenClaims;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
 import com.cotato.nextstation.domain.member.entity.Member;
@@ -114,6 +115,16 @@ public class AppleLoginQueryService {
         }
         try {
             AppleTokenResponse tokenResponse = appleTokenClient.exchangeAuthorizationCode(authorizationCode);
+
+            // 서명 검증까지는 필요 없다 - Apple 토큰 엔드포인트에서 TLS로 직접 받은 응답이라 위조 경로가 없다.
+            // 다만 이 refresh_token을 providerUserId에 잘못 연결하는 실수(교차 오염)를 막기 위해 sub만 대조한다.
+            String tokenSubject = JwtSubjectReader.readSubject(tokenResponse.idToken());
+            if (!providerUserId.equals(tokenSubject)) {
+                log.warn("authorizationCode 교환 응답의 sub가 예상과 다름(교차 오염 의심) - 캐싱하지 않음: " +
+                        "providerUserId={}, tokenSubject={}", providerUserId, tokenSubject);
+                return;
+            }
+
             String encryptedRefreshToken = oAuthRefreshTokenEncryptor.encrypt(tokenResponse.refreshToken());
             pendingAppleCredentialRepository.save(providerUserId, encryptedRefreshToken);
         } catch (Exception e) {
