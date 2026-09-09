@@ -1,8 +1,11 @@
 package com.cotato.nextstation.domain.auth.service.query;
 
 import com.cotato.nextstation.domain.auth.client.AppleOAuthClient;
+import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
 import com.cotato.nextstation.domain.auth.client.dto.AppleIdentityToken;
+import com.cotato.nextstation.domain.auth.client.dto.AppleTokenResponse;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
+import com.cotato.nextstation.domain.auth.repository.PendingAppleCredentialRepository;
 import com.cotato.nextstation.domain.auth.service.AuthTokenIssuer;
 import com.cotato.nextstation.domain.auth.service.IssuedTokens;
 import com.cotato.nextstation.domain.auth.service.result.AppleLoginResult;
@@ -19,6 +22,7 @@ import com.cotato.nextstation.domain.member.repository.MemberSocialAccountReposi
 import com.cotato.nextstation.domain.member.service.command.MemberCommandService;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.jwt.JwtProvider;
+import com.cotato.nextstation.global.security.OAuthRefreshTokenEncryptor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +45,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.never;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 
 @ExtendWith(MockitoExtension.class)
 class AppleLoginQueryServiceTest {
@@ -50,6 +55,15 @@ class AppleLoginQueryServiceTest {
 
     @Mock
     private AppleOAuthClient appleOAuthClient;
+
+    @Mock
+    private AppleTokenClient appleTokenClient;
+
+    @Mock
+    private OAuthRefreshTokenEncryptor oAuthRefreshTokenEncryptor;
+
+    @Mock
+    private PendingAppleCredentialRepository pendingAppleCredentialRepository;
 
     @Mock
     private MemberRepository memberRepository;
@@ -69,6 +83,7 @@ class AppleLoginQueryServiceTest {
     private static final String IDENTITY_TOKEN = "identity-token";
     private static final String NONCE = "raw-nonce";
     private static final String PROVIDER_USER_ID = "000555.abcdef1234567890.0555";
+    private static final String AUTHORIZATION_CODE = "authorization-code";
 
     private AppleIdentityToken identityTokenWithEmail() {
         return new AppleIdentityToken(PROVIDER_USER_ID, "user@privaterelay.appleid.com");
@@ -119,7 +134,7 @@ class AppleLoginQueryServiceTest {
                 .willReturn("apple-signup-token");
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.NEW_MEMBER);
@@ -139,7 +154,7 @@ class AppleLoginQueryServiceTest {
                 .willReturn("apple-signup-token");
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.NEW_MEMBER);
@@ -148,6 +163,64 @@ class AppleLoginQueryServiceTest {
         ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
         org.mockito.Mockito.verify(jwtProvider).generateToken(eq(PROVIDER_USER_ID), claimsCaptor.capture(), any(Duration.class));
         assertThat(claimsCaptor.getValue().get(AppleSignupTokenClaims.EMAIL_KEY)).isEqualTo("");
+    }
+
+    @Test
+    @DisplayName("신규 회원이고 authorizationCode가 있으면 즉시 교환해 pending으로 캐싱한다")
+    void login_newMember_cachesPendingCredential() {
+        // given
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
+        given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
+                .willReturn(Optional.empty());
+        given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
+                .willReturn("apple-signup-token");
+        given(appleTokenClient.exchangeAuthorizationCode(AUTHORIZATION_CODE))
+                .willReturn(new AppleTokenResponse("access-token", "bearer", 3600, "raw-refresh-token", IDENTITY_TOKEN));
+        given(oAuthRefreshTokenEncryptor.encrypt("raw-refresh-token")).willReturn("encrypted-refresh-token");
+
+        // when
+        appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, AUTHORIZATION_CODE);
+
+        // then
+        then(pendingAppleCredentialRepository).should().save(PROVIDER_USER_ID, "encrypted-refresh-token");
+    }
+
+    @Test
+    @DisplayName("authorizationCode가 없으면 교환을 시도하지 않는다")
+    void login_newMember_withoutAuthorizationCode_skipsCaching() {
+        // given
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
+        given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
+                .willReturn(Optional.empty());
+        given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
+                .willReturn("apple-signup-token");
+
+        // when
+        appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null);
+
+        // then
+        then(appleTokenClient).shouldHaveNoInteractions();
+        then(pendingAppleCredentialRepository).should(never()).save(any(), any());
+    }
+
+    @Test
+    @DisplayName("authorizationCode 교환이 실패해도 로그인 판별 자체는 정상 처리된다")
+    void login_newMember_exchangeFailure_stillIssuesSignupToken() {
+        // given
+        given(appleOAuthClient.verify(IDENTITY_TOKEN, NONCE)).willReturn(identityTokenWithEmail());
+        given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
+                .willReturn(Optional.empty());
+        given(jwtProvider.generateToken(eq(PROVIDER_USER_ID), any(Map.class), any(Duration.class)))
+                .willReturn("apple-signup-token");
+        willThrow(new RuntimeException("Apple 통신 실패"))
+                .given(appleTokenClient).exchangeAuthorizationCode(AUTHORIZATION_CODE);
+
+        // when
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, AUTHORIZATION_CODE);
+
+        // then
+        assertThat(result.resultType()).isEqualTo(AppleLoginResultType.NEW_MEMBER);
+        then(pendingAppleCredentialRepository).should(never()).save(any(), any());
     }
 
     @Test
@@ -162,12 +235,13 @@ class AppleLoginQueryServiceTest {
                 .willReturn("reissued-signup-token");
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.PENDING_PROFILE);
         assertThat(result.memberId()).isEqualTo(1L);
         assertThat(result.signupToken()).isEqualTo("reissued-signup-token");
+        then(appleTokenClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -181,7 +255,7 @@ class AppleLoginQueryServiceTest {
         given(authTokenIssuer.issue(1L)).willReturn(new IssuedTokens("access-token", "refresh-token"));
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.LOGIN_SUCCESS);
@@ -201,7 +275,7 @@ class AppleLoginQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(withdrawnMember(LocalDateTime.now().minusDays(8))));
 
         // when & then
-        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN, NONCE))
+        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.APPLE_MEMBER_NOT_ACTIVE.getMessage());
 
@@ -220,7 +294,7 @@ class AppleLoginQueryServiceTest {
         given(authTokenIssuer.issue(1L)).willReturn(new IssuedTokens("access-token", "refresh-token"));
 
         // when
-        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE);
+        AppleLoginResult result = appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null);
 
         // then
         assertThat(result.resultType()).isEqualTo(AppleLoginResultType.LOGIN_SUCCESS);
@@ -238,7 +312,7 @@ class AppleLoginQueryServiceTest {
         given(memberRepository.findById(999L)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN, NONCE))
+        assertThatThrownBy(() -> appleLoginQueryService.login(IDENTITY_TOKEN, NONCE, null))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.MEMBER_NOT_FOUND.getMessage());
     }

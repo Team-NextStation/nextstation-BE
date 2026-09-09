@@ -1,11 +1,10 @@
 package com.cotato.nextstation.domain.auth.service.command;
 
-import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
-import com.cotato.nextstation.domain.auth.client.dto.AppleTokenResponse;
 import com.cotato.nextstation.domain.auth.dto.response.SignupResponse;
 import com.cotato.nextstation.domain.auth.entity.MemberTermsAgreement;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.domain.auth.repository.MemberTermsAgreementRepository;
+import com.cotato.nextstation.domain.auth.repository.PendingAppleCredentialRepository;
 import com.cotato.nextstation.domain.auth.util.AppleSignupTokenClaims;
 import com.cotato.nextstation.domain.auth.util.SignupTokenClaims;
 import com.cotato.nextstation.domain.auth.util.TermsAgreementValidator;
@@ -19,7 +18,6 @@ import com.cotato.nextstation.domain.member.repository.MemberSocialAccountReposi
 import com.cotato.nextstation.domain.member.repository.SocialOauthCredentialRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.jwt.JwtProvider;
-import com.cotato.nextstation.global.security.OAuthRefreshTokenEncryptor;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -45,13 +43,12 @@ public class AppleSignupCommandService {
     private final MemberSocialAccountRepository memberSocialAccountRepository;
     private final MemberTermsAgreementRepository memberTermsAgreementRepository;
     private final SocialOauthCredentialRepository socialOauthCredentialRepository;
+    private final PendingAppleCredentialRepository pendingAppleCredentialRepository;
     private final JwtProvider jwtProvider;
     private final TermsAgreementValidator termsAgreementValidator;
-    private final AppleTokenClient appleTokenClient;
-    private final OAuthRefreshTokenEncryptor oAuthRefreshTokenEncryptor;
 
     @Transactional
-    public SignupResponse signup(String appleSignupToken, List<Long> agreedTermsIds, String ipAddress, String authorizationCode) {
+    public SignupResponse signup(String appleSignupToken, List<Long> agreedTermsIds, String ipAddress) {
 
         AppleSignupClaims appleClaims = resolveAppleClaims(appleSignupToken);
         log.info("Apple 회원가입 요청: providerUserId={}", appleClaims.providerUserId());
@@ -105,10 +102,9 @@ public class AppleSignupCommandService {
                 .toList();
         memberTermsAgreementRepository.saveAll(agreements);
 
-        // authorizationCode 교환은 Apple 서버에 되돌릴 수 없는 부수효과(1회용 code 소비)를 일으킨다.
-        // 이후에도 실패할 수 있는 로컬 저장(약관 동의 등)을 다 끝낸 뒤 트랜잭션의 맨 마지막에 호출해야,
-        // 뒤이은 로컬 실패로 전체가 롤백되면서 이미 소비된 code만 날리고 credential은 못 남기는 상황을 피할 수 있다.
-        saveOauthCredential(socialAccount.getId(), authorizationCode);
+        // authorizationCode 교환은 이미 로그인 판별 시점(AppleLoginQueryService)에 끝나 있다 -
+        // 여기서는 Apple API를 호출하지 않고, 그때 캐싱해둔 결과를 로컬 저장으로 옮겨 붙이기만 한다.
+        attachPendingCredential(socialAccount.getId(), appleClaims.providerUserId());
 
         String signupToken = issueSignupToken(member.getId());
         log.info("Apple 회원가입 완료: memberId={}", member.getId());
@@ -138,25 +134,20 @@ public class AppleSignupCommandService {
         );
     }
 
-    // authorizationCode를 refresh_token으로 교환해 암호화 저장한다 - 탈퇴 시 Apple 쪽 연동을 revoke하기 위한 준비.
-    // 실패해도(예: Apple Key 발급 전, authorizationCode 만료 등) 가입 자체는 그대로 진행한다 - 이건
-    // "나중에 탈퇴할 때 자동으로 못 끊는다"는 부가 기능 손실일 뿐, 핵심 가입 흐름을 막을 이유가 아니다.
-    private void saveOauthCredential(Long memberSocialAccountId, String authorizationCode) {
-        try {
-            AppleTokenResponse tokenResponse = appleTokenClient.exchangeAuthorizationCode(authorizationCode);
-            String encryptedRefreshToken = oAuthRefreshTokenEncryptor.encrypt(tokenResponse.refreshToken());
-
-            socialOauthCredentialRepository.save(
-                    SocialOauthCredential.builder()
-                            .memberSocialAccountId(memberSocialAccountId)
-                            .provider(AuthProvider.APPLE)
-                            .refreshToken(encryptedRefreshToken)
-                            .build()
-            );
-        } catch (Exception e) {
-            log.warn("Apple refresh_token 저장 실패(가입은 정상 처리) - 이 회원은 탈퇴해도 Apple 쪽 연동이 자동 해제되지 않는다: memberSocialAccountId={}",
-                    memberSocialAccountId, e);
-        }
+    // pending 캐시에 없으면(로그인 시점에 authorizationCode를 안 보냈거나, 교환/캐싱이 실패했거나, TTL이 지났거나)
+    // 조용히 건너뛴다 - 이 회원은 탈퇴해도 Apple 쪽 연동이 자동 해제되지 않을 뿐, 가입 자체를 막을 이유가 아니다.
+    private void attachPendingCredential(Long memberSocialAccountId, String providerUserId) {
+        pendingAppleCredentialRepository.consume(providerUserId)
+                .ifPresentOrElse(
+                        encryptedRefreshToken -> socialOauthCredentialRepository.save(
+                                SocialOauthCredential.builder()
+                                        .memberSocialAccountId(memberSocialAccountId)
+                                        .provider(AuthProvider.APPLE)
+                                        .refreshToken(encryptedRefreshToken)
+                                        .build()
+                        ),
+                        () -> log.info("캐싱된 Apple refresh_token이 없어 연동 저장을 건너뜀: memberSocialAccountId={}", memberSocialAccountId)
+                );
     }
 
     // subject는 memberId가 아니라 providerUserId(Apple 회원번호)

@@ -1,10 +1,9 @@
 package com.cotato.nextstation.domain.auth.service.command;
 
-import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
-import com.cotato.nextstation.domain.auth.client.dto.AppleTokenResponse;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.domain.auth.exception.TermsErrorCode;
 import com.cotato.nextstation.domain.auth.repository.MemberTermsAgreementRepository;
+import com.cotato.nextstation.domain.auth.repository.PendingAppleCredentialRepository;
 import com.cotato.nextstation.domain.auth.util.AppleSignupTokenClaims;
 import com.cotato.nextstation.domain.auth.util.TermsAgreementValidator;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
@@ -16,7 +15,6 @@ import com.cotato.nextstation.domain.member.repository.MemberSocialAccountReposi
 import com.cotato.nextstation.domain.member.repository.SocialOauthCredentialRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.jwt.JwtProvider;
-import com.cotato.nextstation.global.security.OAuthRefreshTokenEncryptor;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -71,13 +69,9 @@ class AppleSignupCommandServiceTest {
     private SocialOauthCredentialRepository socialOauthCredentialRepository;
 
     @Mock
-    private AppleTokenClient appleTokenClient;
-
-    @Mock
-    private OAuthRefreshTokenEncryptor oAuthRefreshTokenEncryptor;
+    private PendingAppleCredentialRepository pendingAppleCredentialRepository;
 
     private static final String APPLE_SIGNUP_TOKEN = "apple-signup-token";
-    private static final String AUTHORIZATION_CODE = "authorization-code";
     private static final String PROVIDER_USER_ID = "000555.abcdef1234567890.0555";
 
     private Claims validClaims(String email) {
@@ -135,7 +129,7 @@ class AppleSignupCommandServiceTest {
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
 
         // when
-        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE);
+        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
 
         // then
         assertThat(response.memberId()).isEqualTo(1L);
@@ -145,8 +139,8 @@ class AppleSignupCommandServiceTest {
     }
 
     @Test
-    @DisplayName("authorizationCode 교환에 성공하면 refresh_token을 암호화해 저장한다")
-    void signup_success_savesEncryptedOauthCredential() {
+    @DisplayName("로그인 시점에 캐싱된 refresh_token이 있으면 SocialOauthCredential로 옮겨 저장한다")
+    void signup_success_attachesPendingCredential() {
         // given
         Claims claims = validClaims("user@privaterelay.appleid.com");
         given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willReturn(claims);
@@ -155,12 +149,10 @@ class AppleSignupCommandServiceTest {
         given(memberRepository.save(any(Member.class))).willReturn(savedMember());
         given(memberSocialAccountRepository.save(any(MemberSocialAccount.class))).willReturn(savedSocialAccount());
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
-        given(appleTokenClient.exchangeAuthorizationCode(AUTHORIZATION_CODE))
-                .willReturn(new AppleTokenResponse("access-token", "bearer", 3600L, "raw-refresh-token", "id-token"));
-        given(oAuthRefreshTokenEncryptor.encrypt("raw-refresh-token")).willReturn("encrypted-refresh-token");
+        given(pendingAppleCredentialRepository.consume(PROVIDER_USER_ID)).willReturn(Optional.of("encrypted-refresh-token"));
 
         // when
-        appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE);
+        appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
 
         // then
         ArgumentCaptor<com.cotato.nextstation.domain.member.entity.SocialOauthCredential> captor =
@@ -172,8 +164,8 @@ class AppleSignupCommandServiceTest {
     }
 
     @Test
-    @DisplayName("authorizationCode 교환에 실패해도(Apple Key 미발급 등) 가입 자체는 정상 처리된다")
-    void signup_success_oauthCredentialExchangeFails() {
+    @DisplayName("캐싱된 refresh_token이 없어도(로그인 시점에 code를 안 보냈거나 만료됨) 가입 자체는 정상 처리된다")
+    void signup_success_noPendingCredential() {
         // given
         Claims claims = validClaims("user@privaterelay.appleid.com");
         given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willReturn(claims);
@@ -182,11 +174,10 @@ class AppleSignupCommandServiceTest {
         given(memberRepository.save(any(Member.class))).willReturn(savedMember());
         given(memberSocialAccountRepository.save(any(MemberSocialAccount.class))).willReturn(savedSocialAccount());
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
-        willThrow(new IllegalStateException("apple.oauth.team-id/key-id/private-key가 설정되지 않았습니다."))
-                .given(appleTokenClient).exchangeAuthorizationCode(AUTHORIZATION_CODE);
+        given(pendingAppleCredentialRepository.consume(PROVIDER_USER_ID)).willReturn(Optional.empty());
 
         // when
-        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE);
+        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
 
         // then
         assertThat(response.memberId()).isEqualTo(1L);
@@ -207,7 +198,7 @@ class AppleSignupCommandServiceTest {
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
 
         // when
-        appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE);
+        appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
 
         // then
         ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
@@ -226,7 +217,7 @@ class AppleSignupCommandServiceTest {
         given(memberRepository.existsByEmail("user@example.com")).willReturn(true);
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.DUPLICATE_EMAIL.getMessage());
         verify(memberRepository, never()).save(any());
@@ -245,7 +236,7 @@ class AppleSignupCommandServiceTest {
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("reissued-token");
 
         // when
-        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE);
+        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
 
         // then
         assertThat(response.memberId()).isEqualTo(1L);
@@ -266,7 +257,7 @@ class AppleSignupCommandServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(activeMember()));
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.APPLE_ACCOUNT_ALREADY_REGISTERED.getMessage());
         verify(memberRepository, never()).save(any());
@@ -284,7 +275,7 @@ class AppleSignupCommandServiceTest {
                 .given(termsAgreementValidator).validate(List.of());
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(TermsErrorCode.REQUIRED_TERMS_NOT_AGREED.getMessage());
         verify(memberRepository, never()).save(any());
@@ -302,7 +293,7 @@ class AppleSignupCommandServiceTest {
                 .given(termsAgreementValidator).validate(List.of(1L, 999L));
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L, 999L), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L, 999L), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(TermsErrorCode.TERMS_NOT_FOUND.getMessage());
         verify(memberRepository, never()).save(any());
@@ -315,7 +306,7 @@ class AppleSignupCommandServiceTest {
         given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willThrow(new ExpiredJwtException(null, null, "expired"));
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.APPLE_SIGNUP_TOKEN_EXPIRED.getMessage());
         verify(memberRepository, never()).save(any());
@@ -328,7 +319,7 @@ class AppleSignupCommandServiceTest {
         given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willThrow(new JwtException("invalid signature"));
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.INVALID_APPLE_SIGNUP_TOKEN.getMessage());
     }
@@ -342,7 +333,7 @@ class AppleSignupCommandServiceTest {
         given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willReturn(claims);
 
         // when & then
-        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1", AUTHORIZATION_CODE))
+        assertThatThrownBy(() -> appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.INVALID_APPLE_SIGNUP_TOKEN.getMessage());
     }
