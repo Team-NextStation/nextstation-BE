@@ -1107,8 +1107,12 @@ class CourseQueryServiceTest {
     }
 
     private HistoricalPlaceInfoResponse historicalPlaceInfo(Long placeId, Double x, Double y) {
+        return historicalPlaceInfo(placeId, x, y, PlaceStatus.APPROVED);
+    }
+
+    private HistoricalPlaceInfoResponse historicalPlaceInfo(Long placeId, Double x, Double y, PlaceStatus status) {
         return new HistoricalPlaceInfoResponse(
-                placeId, "장소" + placeId, "설명", "FOOD", "식당", "img" + placeId, x, y, PlaceStatus.APPROVED);
+                placeId, "장소" + placeId, "설명", "FOOD", "식당", "img" + placeId, x, y, status);
     }
 
     @Test
@@ -1192,7 +1196,8 @@ class CourseQueryServiceTest {
         given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(1L))
                 .willReturn(List.of(coursePlace(1L, 20L, 1), coursePlace(1L, 10L, 2)));
         given(placeInfoQueryService.getHistoricalPlaceInfos(List.of(20L, 10L)))
-                .willReturn(List.of(historicalPlaceInfo(10L, 127.1, 37.1), historicalPlaceInfo(20L, 127.2, 37.2)));
+                .willReturn(List.of(historicalPlaceInfo(10L, 127.1, 37.1),
+                        historicalPlaceInfo(20L, 127.2, 37.2, PlaceStatus.REJECTED)));
         given(courseConverter.toCoursePlaceDetailResponse(any(), anyInt())).willAnswer(invocation -> {
             HistoricalPlaceInfoResponse place = invocation.getArgument(0);
             return new CoursePlaceDetailResponse(place.placeId(), place.placeName(), place.description(),
@@ -1207,8 +1212,9 @@ class CourseQueryServiceTest {
         ArgumentCaptor<List<CoursePlaceDetailResponse>> placesCaptor = ArgumentCaptor.forClass(List.class);
         verify(courseConverter).toMyCourseDetailResponse(eq(view), placesCaptor.capture());
         assertThat(placesCaptor.getValue())
-                .extracting(CoursePlaceDetailResponse::placeId, CoursePlaceDetailResponse::orderNum)
-                .containsExactly(tuple(20L, 1), tuple(10L, 2));
+                .extracting(CoursePlaceDetailResponse::placeId, CoursePlaceDetailResponse::orderNum,
+                        CoursePlaceDetailResponse::placeStatus)
+                .containsExactly(tuple(20L, 1, PlaceStatus.REJECTED), tuple(10L, 2, PlaceStatus.APPROVED));
     }
 
     @Test
