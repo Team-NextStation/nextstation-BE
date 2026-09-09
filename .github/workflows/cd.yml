@@ -1,11 +1,11 @@
-# CD: develop 브랜치에 머지되면 이미지를 빌드해 Docker Hub에 올리고,
+# CD: main 브랜치에 머지되면 이미지를 빌드해 Docker Hub에 올리고,
 # EC2에 compose 파일을 복사한 뒤 최신 이미지로 컨테이너를 재배포한다.
 # 배포 후 헬스체크로 앱이 정상 기동됐는지 확인한다.
 name: CD
 
 on:
   push:
-    branches: [ develop ]   # develop에 push될 때 실행
+    branches: [ main ]   # main에 push될 때만 운영에 배포한다
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/nextstation-be
