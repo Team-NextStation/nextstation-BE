@@ -13,7 +13,6 @@ import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.info.License;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
-import io.swagger.v3.oas.annotations.servers.Server;
 
 import java.util.Set;
 
@@ -23,11 +22,7 @@ import java.util.Set;
                 version = "v1.0.0",
                 description = "NextStation Backend API Documentation",
                 license = @License(name = "Apache 2.0", url = "http://www.apache.org/licenses/LICENSE-2.0")
-        ),
-        servers = {
-                @Server(url = "http://localhost:8080", description = "Local Development"),
-                @Server(url = "https://3.37.77.188.nip.io", description = "Production Server"),
-        }
+        )
 )
 // signupTokenAuth: 회원가입 비밀번호 설정(/signup) 응답의 signupToken, 프로필 설정(/profile) API 전용
 @SecurityScheme(
