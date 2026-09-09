@@ -56,6 +56,13 @@ kakao:
 apple:
   oauth:
     allowed-audiences: ${APPLE_OAUTH_ALLOWED_AUDIENCES:}
+    # 웹(Services ID) 로그인 전용 - 네이티브(Bundle ID)와 다른 client_id를 쓴다.
+    # allowed-audiences에도 이 값을 추가해둬야 id_token의 aud 검증을 통과한다.
+    web-client-id: ${APPLE_OAUTH_WEB_CLIENT_ID:}
+    # Apple Developer 콘솔의 Services ID에 등록한 Return URL과 정확히 일치해야 한다.
+    web-redirect-uri: ${APPLE_OAUTH_WEB_REDIRECT_URI:}
+    # 콜백 처리 후 최종적으로 사용자를 돌려보낼 프론트엔드 주소
+    web-frontend-redirect-uri: ${APPLE_OAUTH_WEB_FRONTEND_REDIRECT_URI:}
 
 aws:
   s3:

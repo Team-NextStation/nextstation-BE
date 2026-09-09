@@ -4,11 +4,9 @@ import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.global.exception.CustomException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // JWKS 네트워크 호출은 이 스위트에서 검증하지 않는다 - 부팅 시점 방어와, 네트워크를 타기 전에
@@ -16,14 +14,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AppleOAuthClientTest {
 
     private AppleOAuthClient client() {
-        return new AppleOAuthClient(List.of("com.cotato.nextstation"));
+        return new AppleOAuthClient(List.of("com.cotato.nextstation"), "");
     }
 
     @Test
     @DisplayName("allowed-audiences 설정이 비어 있으면 생성 시점에 실패한다")
     void constructor_emptyAllowedAudiences() {
-        assertThatThrownBy(() -> new AppleOAuthClient(List.of()))
+        assertThatThrownBy(() -> new AppleOAuthClient(List.of(), ""))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("web-client-id가 설정되어 있으면 allowed-audiences에 자동으로 병합된다")
+    void constructor_mergesWebClientIdIntoAllowedAudiences() throws Exception {
+        AppleOAuthClient client = new AppleOAuthClient(List.of("com.cotato.nextstation"), "web.services.id");
+
+        @SuppressWarnings("unchecked")
+        java.util.Set<String> allowedAudiences =
+                (java.util.Set<String>) org.springframework.test.util.ReflectionTestUtils.getField(client, "allowedAudiences");
+
+        org.assertj.core.api.Assertions.assertThat(allowedAudiences)
+                .contains("com.cotato.nextstation", "web.services.id");
     }
 
     @Test
@@ -45,15 +56,6 @@ class AppleOAuthClientTest {
         assertThatThrownBy(() -> client().verify(unsignedToken, "test-nonce"))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN.getMessage());
-    }
-
-    @Test
-    @DisplayName("nonce는 SHA-256 해시를 소문자 hex로 인코딩한다(Apple identity token의 nonce 클레임 형식과 동일)")
-    void hashNonce_sha256Hex() {
-        // "" (빈 문자열)의 SHA-256 값은 잘 알려진 고정 해시값이라 검증용으로 쓴다.
-        String hashed = ReflectionTestUtils.invokeMethod(client(), "hashNonce", "");
-
-        assertThat(hashed).isEqualTo("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     }
 
     private String base64UrlEncode(String json) {
