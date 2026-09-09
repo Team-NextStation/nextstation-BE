@@ -1,9 +1,9 @@
 name: CI with Gradle
 
-# develop 브랜치로 향하는 PR이 열리거나 갱신될 때 실행
+# develop 또는 main 브랜치로 향하는 PR이 열리거나 갱신될 때 실행
 on:
   pull_request:
-    branches: [ "develop" ]
+    branches: [ "develop", "main" ]
 
 permissions:
   contents: read
