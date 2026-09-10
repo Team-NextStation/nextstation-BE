@@ -16,6 +16,7 @@ public interface MemberSocialAccountRepository extends JpaRepository<MemberSocia
 
     Optional<MemberSocialAccount> findFirstByMemberIdOrderByIdAsc(Long memberId);
 
+    // 파기 배치가 대상 회원들 중 특정 provider(Apple/카카오) 연동만 골라 revoke 대상을 추리는 데 쓴다.
     List<MemberSocialAccount> findByMemberIdInAndProvider(Collection<Long> memberIds, AuthProvider provider);
 }
 

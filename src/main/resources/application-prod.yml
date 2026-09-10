@@ -62,3 +62,12 @@ apple:
   oauth:
     # 네이티브 앱의 Bundle ID(App ID). 나중에 웹 Services ID를 추가하면 여기에 콤마로 더한다.
     allowed-audiences: ${APPLE_OAUTH_ALLOWED_AUDIENCES}
+    # revoke/refresh_token 교환용 client_secret(ES256 JWT) 서명에 쓴다 - Apple Account Holder가 발급
+    team-id: ${APPLE_OAUTH_TEAM_ID}
+    key-id: ${APPLE_OAUTH_KEY_ID}
+    private-key: ${APPLE_OAUTH_PRIVATE_KEY}
+
+security:
+  oauth-credential:
+    secret: ${OAUTH_CREDENTIAL_SECRET}
+    salt: ${OAUTH_CREDENTIAL_SALT}

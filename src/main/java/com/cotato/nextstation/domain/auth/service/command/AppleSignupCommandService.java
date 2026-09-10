@@ -4,6 +4,7 @@ import com.cotato.nextstation.domain.auth.dto.response.SignupResponse;
 import com.cotato.nextstation.domain.auth.entity.MemberTermsAgreement;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.domain.auth.repository.MemberTermsAgreementRepository;
+import com.cotato.nextstation.domain.auth.repository.PendingAppleCredentialRepository;
 import com.cotato.nextstation.domain.auth.util.AppleSignupTokenClaims;
 import com.cotato.nextstation.domain.auth.util.SignupTokenClaims;
 import com.cotato.nextstation.domain.auth.util.TermsAgreementValidator;
@@ -11,8 +12,10 @@ import com.cotato.nextstation.domain.member.entity.AuthProvider;
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
+import com.cotato.nextstation.domain.member.entity.SocialOauthCredential;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.member.repository.MemberSocialAccountRepository;
+import com.cotato.nextstation.domain.member.repository.SocialOauthCredentialRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.jwt.JwtProvider;
 import io.jsonwebtoken.Claims;
@@ -39,6 +42,8 @@ public class AppleSignupCommandService {
     private final MemberRepository memberRepository;
     private final MemberSocialAccountRepository memberSocialAccountRepository;
     private final MemberTermsAgreementRepository memberTermsAgreementRepository;
+    private final SocialOauthCredentialRepository socialOauthCredentialRepository;
+    private final PendingAppleCredentialRepository pendingAppleCredentialRepository;
     private final JwtProvider jwtProvider;
     private final TermsAgreementValidator termsAgreementValidator;
 
@@ -68,9 +73,10 @@ public class AppleSignupCommandService {
         }
 
         Member member;
+        MemberSocialAccount socialAccount;
         try {
             member = memberRepository.save(Member.builder().email(email).build());
-            memberSocialAccountRepository.save(
+            socialAccount = memberSocialAccountRepository.save(
                     MemberSocialAccount.builder()
                             .memberId(member.getId())
                             .provider(AuthProvider.APPLE)
@@ -95,6 +101,10 @@ public class AppleSignupCommandService {
                         .build())
                 .toList();
         memberTermsAgreementRepository.saveAll(agreements);
+
+        // authorizationCode 교환은 이미 로그인 판별 시점(AppleLoginQueryService)에 끝나 있다 -
+        // 여기서는 Apple API를 호출하지 않고, 그때 캐싱해둔 결과를 로컬 저장으로 옮겨 붙이기만 한다.
+        attachPendingCredential(socialAccount.getId(), appleClaims.providerUserId());
 
         String signupToken = issueSignupToken(member.getId());
         log.info("Apple 회원가입 완료: memberId={}", member.getId());
@@ -122,6 +132,22 @@ public class AppleSignupCommandService {
                 Map.of(SignupTokenClaims.PURPOSE_KEY, SignupTokenClaims.SIGNUP_PURPOSE),
                 SIGNUP_TOKEN_EXPIRATION
         );
+    }
+
+    // pending 캐시에 없으면(로그인 시점에 authorizationCode를 안 보냈거나, 교환/캐싱이 실패했거나, TTL이 지났거나)
+    // 조용히 건너뛴다 - 이 회원은 탈퇴해도 Apple 쪽 연동이 자동 해제되지 않을 뿐, 가입 자체를 막을 이유가 아니다.
+    private void attachPendingCredential(Long memberSocialAccountId, String providerUserId) {
+        pendingAppleCredentialRepository.consume(providerUserId)
+                .ifPresentOrElse(
+                        encryptedRefreshToken -> socialOauthCredentialRepository.save(
+                                SocialOauthCredential.builder()
+                                        .memberSocialAccountId(memberSocialAccountId)
+                                        .provider(AuthProvider.APPLE)
+                                        .refreshToken(encryptedRefreshToken)
+                                        .build()
+                        ),
+                        () -> log.info("캐싱된 Apple refresh_token이 없어 연동 저장을 건너뜀: memberSocialAccountId={}", memberSocialAccountId)
+                );
     }
 
     // subject는 memberId가 아니라 providerUserId(Apple 회원번호)

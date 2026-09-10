@@ -45,7 +45,7 @@ class WithdrawnMemberPurgerTest {
     }
 
     @Test
-    @DisplayName("회원 행과 관련 데이터를 자식 → 부모 순서로 삭제한다")
+    @DisplayName("파기 대상 회원의 행과 관련 데이터를 자식 → 부모 순서로 삭제한다")
     void purge_hardDeletesMemberAndRelatedRows() {
         // when
         withdrawnMemberPurger.purge(List.of(1L, 2L));
@@ -58,11 +58,13 @@ class WithdrawnMemberPurgerTest {
         assertThat(indexOfTable(sqls, "place_review_image")).isLessThan(indexOfTable(sqls, "place_review"));
         assertThat(indexOfTable(sqls, "place_review")).isLessThan(indexOfTable(sqls, "journal"));
         assertThat(indexOfTable(sqls, "course_places")).isLessThan(indexOfTable(sqls, "course"));
+        // Apple/카카오 revoke 재료(social_oauth_credential)도 member_social_account보다 먼저 지운다
+        assertThat(indexOfTable(sqls, "social_oauth_credential")).isLessThan(indexOfTable(sqls, "member_social_account"));
         // 회원이 남긴 흔적이 어느 테이블에도 남지 않는다
         assertThat(sqls).allMatch(sql -> sql.startsWith("DELETE FROM"));
         assertThat(tables(sqls)).contains("journal", "journal_image", "course", "course_like", "place_review",
-                "place_review_like", "member_place_stamps", "member_terms_agreement", "member_social_account",
-                "email_verification", "recommendation_log", "member");
+                "place_review_like", "member_place_stamps", "member_terms_agreement", "social_oauth_credential",
+                "member_social_account", "email_verification", "recommendation_log", "member");
         then(query).should(org.mockito.Mockito.atLeastOnce()).setParameter("ids", List.of(1L, 2L));
     }
 
