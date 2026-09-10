@@ -1,11 +1,18 @@
 services:
   app:
-    image: ${DOCKER_USERNAME}/nextstation-be:latest
+    # 기본값은 현재 운영 동작과 같다. dev 스택만 .env로 값을 덮어써 8081/:dev로 뜬다.
+    image: ${DOCKER_USERNAME}/nextstation-be:${IMAGE_TAG:-prod}
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
+    # 0은 제한 없음. dev에만 한도를 걸어 dev의 메모리 폭주가 호스트 전체 OOM으로 번지지 않게 한다.
+    mem_limit: ${MEM_LIMIT:-0}
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      
+
+      # JDK 10+ JVM은 cgroup 한도의 1/4을 최대 힙으로 잡는다.
+      # mem_limit을 거는 환경에서는 힙이 현재 커밋(151MB)을 밑돌지 않도록 -Xmx를 함께 지정한다.
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME}

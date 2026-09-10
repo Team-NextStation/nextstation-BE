@@ -3,8 +3,10 @@ package com.cotato.nextstation.domain.place.service.command;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.service.query.AdminGuard;
 import com.cotato.nextstation.domain.place.dto.request.AdminPlaceCreateRequest;
-import com.cotato.nextstation.domain.place.dto.request.AdminPlaceUpdateRequest;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceStatusUpdateRequest;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCreateResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceStatusUpdateResponse;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceUpdateRequest;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
 import com.cotato.nextstation.domain.place.entity.Category;
 import com.cotato.nextstation.domain.place.entity.Place;
@@ -15,8 +17,8 @@ import com.cotato.nextstation.domain.place.enums.ImageSourceType;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
-import com.cotato.nextstation.domain.place.repository.CategoryRepository;
 import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository;
+import com.cotato.nextstation.domain.place.repository.CategoryRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
@@ -30,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -84,6 +87,7 @@ class AdminPlaceCommandServiceTest {
 
     @Mock
     private ImageCommandService imageCommandService;
+
 
     @Mock
     private AdminPlaceQueryService adminPlaceQueryService;
@@ -264,6 +268,130 @@ class AdminPlaceCommandServiceTest {
 
         then(placeTagMappingRepository).shouldHaveNoInteractions();
         then(placeImageRepository).shouldHaveNoInteractions();
+    }
+
+    private Place placeWithStatus(PlaceStatus status) {
+        Place place = Place.builder()
+                .stationId(STATION_ID)
+                .category(Category.of(CategoryCode.CAFE, "카페", "https://cdn/default-cafe.jpg"))
+                .description("역에서 5분 거리의 통유리 카페")
+                .placeName("스타벅스 강남역점")
+                .address("서울 강남구 강남대로 390")
+                .xCoordinate(127.0276)
+                .yCoordinate(37.4979)
+                .kakaoPlaceId(KAKAO_PLACE_ID)
+                .status(status)
+                .build();
+        ReflectionTestUtils.setField(place, "id", PLACE_ID);
+        return place;
+    }
+
+    private void givenPlaceFound(PlaceStatus status) {
+        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID))
+                .willReturn(Optional.of(placeWithStatus(status)));
+    }
+
+    @ParameterizedTest(name = "{0} 상태의 장소는 {1}(으)로 변경된다")
+    @CsvSource({
+            "PENDING, APPROVED, ",
+            "PENDING, REJECTED, 사진이 기준에 맞지 않음",
+            "PENDING, DELETED, 중복 등록",
+            "APPROVED, DELETED, 폐업 확인됨",
+            "REJECTED, PENDING, ",
+            "DELETED, PENDING, ",
+    })
+    @DisplayName("허용된 전이는 상태와 사유를 반영한다")
+    void updateStatus_allowedTransitions(PlaceStatus from, PlaceStatus to, String reason) {
+        Place place = placeWithStatus(from);
+        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.of(place));
+
+        AdminPlaceStatusUpdateResponse response = adminPlaceCommandService.updateStatus(
+                ADMIN_ID, PLACE_ID, new AdminPlaceStatusUpdateRequest(to, reason));
+
+        assertThat(response.placeId()).isEqualTo(PLACE_ID);
+        assertThat(response.status()).isEqualTo(to);
+        assertThat(place.getStatus()).isEqualTo(to);
+        assertThat(place.getRejectReason()).isEqualTo(to == PlaceStatus.REJECTED ? reason : null);
+        assertThat(place.getDeleteReason()).isEqualTo(to == PlaceStatus.DELETED ? reason : null);
+    }
+
+    @Test
+    @DisplayName("복구하면 이전 반려 사유와 삭제 사유가 지워진다")
+    void updateStatus_restoreClearsReasons() {
+        Place place = placeWithStatus(PlaceStatus.REJECTED);
+        ReflectionTestUtils.setField(place, "rejectReason", "사진이 기준에 맞지 않음");
+        ReflectionTestUtils.setField(place, "deleteReason", "폐업 확인됨");
+        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.of(place));
+
+        adminPlaceCommandService.updateStatus(
+                ADMIN_ID, PLACE_ID, new AdminPlaceStatusUpdateRequest(PlaceStatus.PENDING, null));
+
+        assertThat(place.getRejectReason()).isNull();
+        assertThat(place.getDeleteReason()).isNull();
+    }
+
+    @ParameterizedTest(name = "{0} 상태에서 사유 없이 {1}(으)로 변경할 수 없다")
+    @CsvSource({
+            "PENDING, REJECTED, ''",
+            "PENDING, DELETED, '   '",
+            "APPROVED, DELETED, ",
+    })
+    @DisplayName("반려와 삭제는 사유가 없으면 막는다")
+    void updateStatus_reasonRequired(PlaceStatus from, PlaceStatus to, String reason) {
+        Place place = placeWithStatus(from);
+        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.of(place));
+
+        assertThatThrownBy(() -> adminPlaceCommandService.updateStatus(
+                ADMIN_ID, PLACE_ID, new AdminPlaceStatusUpdateRequest(to, reason)))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.PLACE_STATUS_REASON_REQUIRED);
+
+        assertThat(place.getStatus()).isEqualTo(from);
+    }
+
+    @ParameterizedTest(name = "{0} 상태에서 {1}(으)로는 변경할 수 없다")
+    @CsvSource({
+            "APPROVED, REJECTED",
+            "APPROVED, PENDING",
+            "REJECTED, APPROVED",
+            "DELETED, APPROVED",
+            "PENDING, PENDING",
+            "APPROVED, APPROVED",
+    })
+    @DisplayName("허용되지 않는 전이는 막는다")
+    void updateStatus_invalidTransition(PlaceStatus from, PlaceStatus to) {
+        Place place = placeWithStatus(from);
+        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.of(place));
+
+        assertThatThrownBy(() -> adminPlaceCommandService.updateStatus(
+                ADMIN_ID, PLACE_ID, new AdminPlaceStatusUpdateRequest(to, "사유")))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.INVALID_PLACE_STATUS_TRANSITION);
+
+        assertThat(place.getStatus()).isEqualTo(from);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 장소의 상태는 변경할 수 없다")
+    void updateStatus_placeNotFound() {
+        given(adminPlaceRepository.findAdminPlaceForUpdate(PLACE_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminPlaceCommandService.updateStatus(
+                ADMIN_ID, PLACE_ID, new AdminPlaceStatusUpdateRequest(PlaceStatus.APPROVED, null)))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", PlaceErrorCode.PLACE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 상태를 조회하지도 않고 막는다")
+    void updateStatus_notAdmin() {
+        willThrow(new CustomException(GlobalErrorCode.FORBIDDEN)).given(adminGuard).requireAdmin(ADMIN_ID);
+
+        assertThatThrownBy(() -> adminPlaceCommandService.updateStatus(
+                ADMIN_ID, PLACE_ID, new AdminPlaceStatusUpdateRequest(PlaceStatus.APPROVED, null)))
+                .isInstanceOf(CustomException.class);
+
+        then(adminPlaceRepository).shouldHaveNoInteractions();
     }
 
     @Test
