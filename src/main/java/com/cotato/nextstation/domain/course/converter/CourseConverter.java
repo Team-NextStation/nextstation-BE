@@ -33,7 +33,7 @@ import com.cotato.nextstation.domain.course.repository.CourseRepository.PlaceCou
 import com.cotato.nextstation.domain.course.repository.CourseRepository.PopularCourseView;
 import com.cotato.nextstation.domain.course.repository.CourseLikeRepository.LikedCourseView;
 import com.cotato.nextstation.domain.journal.dto.response.JournalCardInfoResponse;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import com.cotato.nextstation.domain.station.entity.LineCode;
 import org.springframework.stereotype.Component;
@@ -141,7 +141,7 @@ public class CourseConverter {
         );
     }
 
-    public CoursePlaceDetailResponse toCoursePlaceDetailResponse(PlaceInfoResponse place, int orderNum) {
+    public CoursePlaceDetailResponse toCoursePlaceDetailResponse(HistoricalPlaceInfoResponse place, int orderNum) {
         return new CoursePlaceDetailResponse(
                 place.placeId(),
                 place.placeName(),
@@ -151,6 +151,7 @@ public class CourseConverter {
                 place.imageUrl(),
                 place.xCoordinate(),
                 place.yCoordinate(),
+                place.placeStatus(),
                 orderNum
         );
     }

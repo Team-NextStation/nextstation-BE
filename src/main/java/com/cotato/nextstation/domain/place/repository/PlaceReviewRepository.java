@@ -132,7 +132,20 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
     // 여행일지에 연결된 장소 리뷰 리스트
     List<PlaceReview> findByJournalId(Long journalId);
 
+    // Place의 @SQLRestriction과 무관하게, 여행일지에 기록된 리뷰의 원래 place_id를 읽는다.
+    @Query(value = """
+            SELECT id AS reviewId, place_id AS placeId
+            FROM place_review
+            WHERE journal_id = :journalId AND is_deleted = false
+            """, nativeQuery = true)
+    List<ReviewPlaceView> findReviewPlaceIdsByJournalId(@Param("journalId") Long journalId);
+
 
     Optional<PlaceReview> findByJournalIdAndPlaceId(Long journalId, Long placeId);
+
+    interface ReviewPlaceView {
+        Long getReviewId();
+        Long getPlaceId();
+    }
 
 }
