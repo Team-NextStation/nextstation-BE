@@ -14,6 +14,9 @@ public interface PlaceImageRepository extends JpaRepository<PlaceImage, Long> {
 
     List<PlaceImage> findByPlaceIdIn(List<Long> placeIds);
 
+    // S3 원본 삭제 전 참조 확인용. 같은 URL을 여러 장소가 공유할 수 있다.
+    boolean existsByImageUrl(String imageUrl);
+
     @Query(value = """
             SELECT *
             FROM place_image

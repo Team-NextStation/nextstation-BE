@@ -5,6 +5,7 @@ import com.cotato.nextstation.domain.image.enums.S3Folder;
 import com.cotato.nextstation.domain.image.exception.ImageErrorCode;
 import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.member.service.query.AdminGuard;
+import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +29,10 @@ public class ImageCommandService {
 
     private static final Duration PRESIGNED_URL_EXPIRATION = Duration.ofMinutes(10);
     private static final String ALLOWED_DELETE_PREFIX = "images/uploads/";
+    private static final String STATIC_PLACE_DELETE_PREFIX = S3Folder.STATIC_PLACE.getPath() + "/";
 
     private final JournalRepository journalRepository;
+    private final PlaceImageRepository placeImageRepository;
     private final AdminGuard adminGuard;
     private final S3Presigner s3Presigner;
     private final S3Client s3Client;
@@ -39,12 +42,14 @@ public class ImageCommandService {
     public ImageCommandService(S3Presigner s3Presigner,
                                S3Client s3Client,
                                JournalRepository journalRepository,
+                               PlaceImageRepository placeImageRepository,
                                AdminGuard adminGuard,
                                @Value("${aws.s3.bucket-name}") String bucketName,
                                 @Value("${spring.cloud.aws.region.static}") String region) {
         this.s3Presigner = s3Presigner;
         this.s3Client = s3Client;
         this.journalRepository = journalRepository;
+        this.placeImageRepository = placeImageRepository;
         this.adminGuard = adminGuard;
         this.bucketName = bucketName;
         this.region = region;
@@ -99,13 +104,14 @@ public class ImageCommandService {
     public void deleteImage(String imageUrl, Long memberId) {
         String key = extractKeyFromImageUrl(imageUrl);
 
-        // 정적 장소 사진 등 uploads 외 경로 삭제 방지
-        if (!key.startsWith(ALLOWED_DELETE_PREFIX)) {
+        if (key.startsWith(STATIC_PLACE_DELETE_PREFIX)) {
+            validatePlaceImageDeletable(imageUrl, memberId);
+        } else if (key.startsWith(ALLOWED_DELETE_PREFIX)) {
+            validateOwnership(key, memberId);
+        } else {
             log.warn("삭제 불가 경로 요청: key={}", key);
             throw new CustomException(ImageErrorCode.UNSUPPORTED_UPLOAD_FOLDER);
         }
-
-        validateOwnership(key, memberId);
 
         DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
                 .bucket(bucketName)
@@ -113,6 +119,22 @@ public class ImageCommandService {
                 .build();
         s3Client.deleteObject(deleteRequest);
         log.info("S3 이미지 삭제 완료: key={}", key);
+    }
+
+    /**
+     * 장소 사진은 회원 소유 경로가 아니므로 소유권 대신 관리자 권한으로 판정한다.
+     * <p>
+     * 참조가 없는 경우는 업로드 후 저장하지 않고 취소한 사진이므로 바로 삭제한다.
+     */
+    private void validatePlaceImageDeletable(String imageUrl, Long memberId) {
+        requireMemberId(memberId);
+        adminGuard.requireAdmin(memberId);
+
+        if (placeImageRepository.existsByImageUrl(imageUrl)) {
+            log.warn("장소가 참조 중인 사진 삭제 시도: imageUrl={}, memberId={}", imageUrl, memberId);
+            throw new CustomException(ImageErrorCode.PLACE_IMAGE_IN_USE);
+        }
+        log.info("참조 없는 장소 사진 삭제 진행: imageUrl={}, memberId={}", imageUrl, memberId);
     }
 
     public void validatePlaceImageUrl(String imageUrl, String kakaoPlaceId) {

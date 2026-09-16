@@ -7,6 +7,7 @@ import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.service.query.AdminGuard;
+import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import com.cotato.nextstation.global.exception.CustomException;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,6 +46,8 @@ class ImageCommandServiceTest {
     private static final Long JOURNAL_ID = 10L;
     private static final Long OTHER_MEMBER_ID = 999L;
     private static final String KAKAO_PLACE_ID = "8137464";
+    private static final String STATIC_PLACE_IMAGE_URL =
+            "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/" + KAKAO_PLACE_ID + "/uuid.jpg";
 
     @Mock
     private S3Presigner s3Presigner;
@@ -55,6 +59,9 @@ class ImageCommandServiceTest {
     private JournalRepository journalRepository;
 
     @Mock
+    private PlaceImageRepository placeImageRepository;
+
+    @Mock
     private AdminGuard adminGuard;
 
     private ImageCommandService imageCommandService;
@@ -62,7 +69,8 @@ class ImageCommandServiceTest {
 
     @BeforeEach
     void setUp() {
-        imageCommandService = new ImageCommandService(s3Presigner, s3Client, journalRepository, adminGuard, BUCKET_NAME, REGION);
+        imageCommandService = new ImageCommandService(
+                s3Presigner, s3Client, journalRepository, placeImageRepository, adminGuard, BUCKET_NAME, REGION);
     }
 
     private void givenPresignedUrl(String url) throws Exception {
@@ -200,6 +208,54 @@ class ImageCommandServiceTest {
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ImageErrorCode.IMAGE_ACCESS_DENIED.getMessage());
 
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("장소가 참조하지 않는 사진이면 관리자가 삭제할 수 있다")
+    void deleteImage_staticPlace_unreferenced() {
+        // given: 업로드만 하고 장소에 저장하지 않은 사진
+        String imageUrl = STATIC_PLACE_IMAGE_URL;
+        given(placeImageRepository.existsByImageUrl(imageUrl)).willReturn(false);
+
+        // when
+        imageCommandService.deleteImage(imageUrl, MEMBER_ID);
+
+        // then
+        verify(adminGuard).requireAdmin(MEMBER_ID);
+        ArgumentCaptor<DeleteObjectRequest> captor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(captor.capture());
+        assertThat(captor.getValue().key()).isEqualTo("images/static/places/" + KAKAO_PLACE_ID + "/uuid.jpg");
+    }
+
+    @Test
+    @DisplayName("장소가 참조 중인 사진이면 S3 원본을 삭제하지 않는다")
+    void deleteImage_staticPlace_stillReferenced() {
+        // given
+        String imageUrl = STATIC_PLACE_IMAGE_URL;
+        given(placeImageRepository.existsByImageUrl(imageUrl)).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> imageCommandService.deleteImage(imageUrl, MEMBER_ID))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ImageErrorCode.PLACE_IMAGE_IN_USE.getMessage());
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 장소 사진을 삭제할 수 없고 참조 조회도 하지 않는다")
+    void deleteImage_staticPlace_nonAdmin() {
+        // given
+        org.mockito.BDDMockito.willThrow(new CustomException(GlobalErrorCode.FORBIDDEN))
+                .given(adminGuard).requireAdmin(MEMBER_ID);
+
+        // when & then
+        assertThatThrownBy(() -> imageCommandService.deleteImage(STATIC_PLACE_IMAGE_URL, MEMBER_ID))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(GlobalErrorCode.FORBIDDEN.getMessage());
+
+        verify(placeImageRepository, never()).existsByImageUrl(anyString());
         verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
