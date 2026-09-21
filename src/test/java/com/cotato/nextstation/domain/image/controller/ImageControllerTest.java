@@ -62,13 +62,13 @@ class ImageControllerTest {
     @Test
     @DisplayName("정상 요청이면 200과 presignedUrl/imageUrl/contentType을 반환한다")
     void getPresignedUrl_success() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "profile.jpg");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "profile.jpg");
         PresignedUrlResponse response = new PresignedUrlResponse(
                 "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg?X-Amz-Signature=abc",
                 "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg",
                 "image/jpeg"
         );
-        given(imageCommandService.getPresignedUrl(S3Folder.PROFILE, 1L, null, "profile.jpg")).willReturn(response);
+        given(imageCommandService.getPresignedUrl(S3Folder.PROFILE, 1L, null, null, "profile.jpg")).willReturn(response);
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -100,7 +100,7 @@ class ImageControllerTest {
     @Test
     @DisplayName("fileName이 비어있으면 400을 반환한다")
     void getPresignedUrl_fileNameBlank() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "");
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -129,9 +129,9 @@ class ImageControllerTest {
     @Test
     @DisplayName("확장자가 없는 파일명이면 400을 반환한다")
     void getPresignedUrl_invalidFileName() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "profile");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "profile");
         willThrow(new CustomException(ImageErrorCode.INVALID_FILE_NAME))
-                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), anyString());
+                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), any(), anyString());
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -144,9 +144,9 @@ class ImageControllerTest {
     @Test
     @DisplayName("지원하지 않는 확장자면 400을 반환한다")
     void getPresignedUrl_unsupportedExtension() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "profile.bmp");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "profile.bmp");
         willThrow(new CustomException(ImageErrorCode.UNSUPPORTED_FILE_EXTENSION))
-                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), anyString());
+                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), any(), anyString());
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -159,9 +159,9 @@ class ImageControllerTest {
     @Test
     @DisplayName("journalId 없이 JOURNAL 업로드를 요청하면 400을 반환한다")
     void getPresignedUrl_journalMissingJournalId() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.JOURNAL, null, "photo.jpg");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.JOURNAL, null, null, "photo.jpg");
         willThrow(new CustomException(ImageErrorCode.MISSING_JOURNAL_ID))
-                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), anyString());
+                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), any(), anyString());
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + TOKEN)
@@ -174,13 +174,13 @@ class ImageControllerTest {
     @Test
     @DisplayName("folder가 PROFILE이면 signupToken으로도 200을 반환한다 (회원가입 프로필 설정 단계)")
     void getPresignedUrl_profileFolder_signupTokenAllowed() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "profile.jpg");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "profile.jpg");
         PresignedUrlResponse response = new PresignedUrlResponse(
                 "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg?X-Amz-Signature=abc",
                 "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/uploads/profile/1/uuid.jpg",
                 "image/jpeg"
         );
-        given(imageCommandService.getPresignedUrl(S3Folder.PROFILE, 1L, null, "profile.jpg")).willReturn(response);
+        given(imageCommandService.getPresignedUrl(S3Folder.PROFILE, 1L, null, null, "profile.jpg")).willReturn(response);
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + SIGNUP_TOKEN)
@@ -193,7 +193,7 @@ class ImageControllerTest {
     @Test
     @DisplayName("folder가 JOURNAL이면 signupToken으로는 401을 반환한다")
     void getPresignedUrl_journalFolder_signupTokenRejected() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.JOURNAL, null, "photo.jpg");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.JOURNAL, null, null, "photo.jpg");
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + SIGNUP_TOKEN)
@@ -206,7 +206,7 @@ class ImageControllerTest {
     @Test
     @DisplayName("Authorization 헤더 없이 요청하면 401을 반환한다")
     void getPresignedUrl_noAuthorizationHeader() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "profile.jpg");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "profile.jpg");
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -218,7 +218,7 @@ class ImageControllerTest {
     @Test
     @DisplayName("빈 Bearer 토큰이면 500이 아닌 401을 반환한다")
     void getPresignedUrl_emptyBearerToken() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, "profile.jpg");
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.PROFILE, null, null, "profile.jpg");
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer ")
@@ -229,17 +229,17 @@ class ImageControllerTest {
     }
 
     @Test
-    @DisplayName("STATIC_PLACE 폴더로 요청하면 400을 반환한다 (presigned URL 발급 대상 아님)")
-    void getPresignedUrl_staticPlaceUnsupported() throws Exception {
-        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.STATIC_PLACE, null, "place.jpg");
-        willThrow(new CustomException(ImageErrorCode.UNSUPPORTED_UPLOAD_FOLDER))
-                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), anyString());
+    @DisplayName("STATIC_PLACE 폴더인데 kakaoPlaceId가 없으면 400을 반환한다")
+    void getPresignedUrl_staticPlaceWithoutKakaoPlaceId() throws Exception {
+        PresignedUrlRequest request = new PresignedUrlRequest(S3Folder.STATIC_PLACE, null, null, "place.jpg");
+        willThrow(new CustomException(ImageErrorCode.MISSING_KAKAO_PLACE_ID))
+                .given(imageCommandService).getPresignedUrl(any(S3Folder.class), anyLong(), any(), any(), anyString());
 
         mockMvc.perform(post("/api/v1/images/presigned-url")
                         .header("Authorization", "Bearer " + TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(ImageErrorCode.UNSUPPORTED_UPLOAD_FOLDER.getCode()));
+                .andExpect(jsonPath("$.code").value(ImageErrorCode.MISSING_KAKAO_PLACE_ID.getCode()));
     }
 }

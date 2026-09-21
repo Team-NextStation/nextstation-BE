@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
+import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+
 public interface MemberStampRepository extends JpaRepository<MemberStamp, Long> {
 
     boolean existsByMemberIdAndId(Long memberId, Long id);
@@ -56,8 +58,9 @@ public interface MemberStampRepository extends JpaRepository<MemberStamp, Long> 
             "l.id AS lineId, l.name AS lineName, l.code AS lineCode " +
             "FROM MemberStamp ms " +
             "JOIN Station s ON s.id = ms.stationId " +
+            "JOIN Member mem ON mem.id = ms.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE ms.memberId = :memberId")
+            "WHERE ms.memberId = :memberId AND " + NOT_WITHDRAWN)
     List<VisitedStationView> findVisitedStationsByMemberId(@Param("memberId") Long memberId);
 
     interface VisitedStationView {

@@ -17,6 +17,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.csv.DuplicateHeaderMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,8 +46,10 @@ import java.util.stream.StreamSupport;
 /**
  * "장소 데이터" 구글 시트를 읽어 카카오 로컬 "키워드로 장소 검색" API로
  * 주소/좌표/카카오맵 URL을 보강하고, 결과를 Sheets API로 시트에 직접 되써넣는 1회성 배치 스크립트.
- * 확정된 행은 주소~카카오맵 URL 컬럼(K~O)에, 미확정 행은 배치 매칭 메모(P) 컬럼에 사유/후보를 기록한다.
- * 검수메모(J)는 사람이 쓰는 컬럼이라 배치가 건드리지 않는다.
+ * 확정된 행은 주소~카카오맵 URL 컬럼에, 미확정 행은 배치 매칭 메모 컬럼에 사유/후보를 기록한다.
+ * 검수 메모는 사람이 쓰는 컬럼이라 배치가 건드리지 않는다.
+ *
+ * <p>되써넣을 위치는 헤더 이름으로 찾는다. 열 문자를 고정하면 시트 앞에 컬럼이 추가될 때 대상이 아닌 컬럼을 덮어쓴다.
  */
 public final class PlaceGeocodingBatch {
 
@@ -67,9 +70,14 @@ public final class PlaceGeocodingBatch {
     private static final int HEADER_ROW_NUMBER = 1;
 
     private static final String[] OUTPUT_HEADERS = {
-            "담당자", "진행 상태", "호선", "역명", "카테고리", "장소명", "해시태그 1", "해시태그 2", "한 줄 설명", "검수메모",
+            "담당자", "진행 상태", "호선", "역명", "카테고리", "장소명", "해시태그 1", "해시태그 2", "한 줄 설명", "검수 메모",
             "주소", "전화번호", "x좌표", "y좌표", "카카오맵 URL"
     };
+
+    // 확정된 행에 한 범위로 묶어 쓰는 컬럼. 시트에서 이 순서대로 연속이어야 한다.
+    private static final List<String> ADDRESS_BLOCK_HEADERS =
+            List.of("주소", "전화번호", "x좌표", "y좌표", "카카오맵 URL");
+    private static final String MATCH_NOTE_HEADER = "배치 매칭 메모 (BE)";
 
     private PlaceGeocodingBatch() {
     }
@@ -89,7 +97,9 @@ public final class PlaceGeocodingBatch {
         Sheets sheetsService = buildSheetsService();
         String sheetTitle = resolveSheetTitle(sheetsService, spreadsheetId, extractGid(sheetCsvUrl));
 
-        List<SheetRow> targetRows = downloadIncludedRows(httpClient, sheetCsvUrl);
+        SheetSnapshot snapshot = downloadIncludedRows(httpClient, sheetCsvUrl);
+        SheetLayout layout = resolveLayout(snapshot.headers());
+        List<SheetRow> targetRows = snapshot.rows();
         log.info("진행 상태='{}' 대상 행 {}건 로드", PROGRESS_STATUS_DONE, targetRows.size());
 
         List<Map<String, String>> enrichedRows = new ArrayList<>();
@@ -146,11 +156,11 @@ public final class PlaceGeocodingBatch {
 
             if (resolution.confirmed()) {
                 enrichedRows.add(toEnrichedRow(row, resolution.match()));
-                sheetUpdates.add(toAddressValueRange(sheetTitle, sheetRow.rowNumber(), row, resolution.match()));
-                sheetUpdates.add(toClearReviewNoteValueRange(sheetTitle, sheetRow.rowNumber()));
+                sheetUpdates.add(toAddressValueRange(layout, sheetTitle, sheetRow.rowNumber(), row, resolution.match()));
+                sheetUpdates.add(toClearReviewNoteValueRange(layout, sheetTitle, sheetRow.rowNumber()));
             } else {
                 manualReviewRows.add(toManualReviewRow(row, resolution.reason(), resolution.candidates()));
-                sheetUpdates.add(toReviewNoteValueRange(sheetTitle, sheetRow.rowNumber(),
+                sheetUpdates.add(toReviewNoteValueRange(layout, sheetTitle, sheetRow.rowNumber(),
                         resolution.reason(), resolution.candidates()));
             }
 
@@ -245,7 +255,61 @@ public final class PlaceGeocodingBatch {
     private record SheetRow(int rowNumber, CSVRecord record) {
     }
 
-    private static List<SheetRow> downloadIncludedRows(HttpClient httpClient, String sheetCsvUrl)
+    private record SheetSnapshot(List<String> headers, List<SheetRow> rows) {
+    }
+
+    /** 되써넣을 컬럼의 0-based 헤더 인덱스 */
+    record SheetLayout(int addressBlockIndex, int matchNoteIndex) {
+
+        String addressBlockRange(String sheetTitle, int rowNumber) {
+            String start = columnLetter(addressBlockIndex);
+            String end = columnLetter(addressBlockIndex + ADDRESS_BLOCK_HEADERS.size() - 1);
+            return sheetTitle + "!" + start + rowNumber + ":" + end + rowNumber;
+        }
+
+        String matchNoteRange(String sheetTitle, int rowNumber) {
+            return sheetTitle + "!" + columnLetter(matchNoteIndex) + rowNumber;
+        }
+    }
+
+    static SheetLayout resolveLayout(List<String> headers) {
+        int addressBlockIndex = headers.indexOf(ADDRESS_BLOCK_HEADERS.get(0));
+        if (addressBlockIndex < 0) {
+            throw new IllegalStateException("시트에서 '주소' 컬럼을 찾을 수 없습니다. headers=" + headers);
+        }
+
+        // 한 범위로 묶어 쓰므로 중간에 다른 컬럼이 끼면 그 칸까지 덮어쓴다.
+        List<String> actual = headers.subList(addressBlockIndex,
+                Math.min(addressBlockIndex + ADDRESS_BLOCK_HEADERS.size(), headers.size()));
+        if (!ADDRESS_BLOCK_HEADERS.equals(actual)) {
+            throw new IllegalStateException("주소~카카오맵 URL 컬럼이 연속이어야 합니다. expected="
+                    + ADDRESS_BLOCK_HEADERS + ", actual=" + actual);
+        }
+
+        int matchNoteIndex = headers.indexOf(MATCH_NOTE_HEADER);
+        if (matchNoteIndex < 0) {
+            throw new IllegalStateException("시트에서 '" + MATCH_NOTE_HEADER + "' 컬럼을 찾을 수 없습니다. headers=" + headers);
+        }
+
+        log.info("시트 컬럼 위치 확인: 주소={}, {}={}",
+                columnLetter(addressBlockIndex), MATCH_NOTE_HEADER, columnLetter(matchNoteIndex));
+        return new SheetLayout(addressBlockIndex, matchNoteIndex);
+    }
+
+    /** 0-based 헤더 인덱스를 A1 표기 열 문자로 바꾼다. 0 -> A, 25 -> Z, 26 -> AA. */
+    static String columnLetter(int index) {
+        StringBuilder letters = new StringBuilder();
+        for (int i = index; i >= 0; i = i / 26 - 1) {
+            letters.insert(0, (char) ('A' + i % 26));
+        }
+        return letters.toString();
+    }
+
+    /**
+     * 시트 컬럼이 앞에 추가돼도 안 깨지도록 첫 줄을 헤더로 읽는다.
+     * 시트 끝에 이름 없는 빈 컬럼이 있어 중복·누락 헤더를 허용해야 한다.
+     */
+    private static SheetSnapshot downloadIncludedRows(HttpClient httpClient, String sheetCsvUrl)
             throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(sheetCsvUrl)).GET().build();
         HttpResponse<String> response;
@@ -259,13 +323,16 @@ public final class PlaceGeocodingBatch {
         }
 
         CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setHeader(OUTPUT_HEADERS)
+                .setHeader()
                 .setSkipHeaderRecord(true)
                 .setIgnoreSurroundingSpaces(true)
+                .setDuplicateHeaderMode(DuplicateHeaderMode.ALLOW_ALL)
+                .setAllowMissingColumnNames(true)
                 .build();
 
         try (CSVParser parser = CSVParser.parse(new StringReader(response.body()), format)) {
             List<SheetRow> result = new ArrayList<>();
+            int skippedResolved = 0;
             int rowNumber = HEADER_ROW_NUMBER;
             for (CSVRecord record : parser) {
                 rowNumber++;
@@ -275,9 +342,16 @@ public final class PlaceGeocodingBatch {
                 if (record.get("장소명").isBlank()) {
                     continue;
                 }
+                // 재검색하면 place id가 바뀔 수 있어 운영 반영의 (역명, place id) 매칭이 끊긴다.
+                // 장소를 교체했다면 그 행의 카카오맵 URL을 비우고 돌린다.
+                if (!record.get("카카오맵 URL").isBlank()) {
+                    skippedResolved++;
+                    continue;
+                }
                 result.add(new SheetRow(rowNumber, record));
             }
-            return result;
+            log.info("이미 카카오맵 URL이 있어 건너뛴 행: {}건", skippedResolved);
+            return new SheetSnapshot(parser.getHeaderNames(), result);
         }
     }
 
@@ -438,7 +512,7 @@ public final class PlaceGeocodingBatch {
         result.put("해시태그 1", row.get("해시태그 1"));
         result.put("해시태그 2", row.get("해시태그 2"));
         result.put("한 줄 설명", row.get("한 줄 설명"));
-        result.put("검수메모", row.get("검수메모"));
+        result.put("검수 메모", row.get("검수 메모"));
         result.put("주소", document.path("address_name").asText(""));
         result.put("전화번호", resolvePhone(row, document));
         result.put("x좌표", document.path("x").asText(""));
@@ -464,7 +538,9 @@ public final class PlaceGeocodingBatch {
                 .collect(Collectors.toList());
     }
 
-    private static ValueRange toAddressValueRange(String sheetTitle, int rowNumber, CSVRecord row, JsonNode document) {
+    private static ValueRange toAddressValueRange(SheetLayout layout, String sheetTitle, int rowNumber,
+                                                  CSVRecord row, JsonNode document) {
+        // ADDRESS_BLOCK_HEADERS 순서와 맞춰야 한다. resolveLayout이 그 순서를 시트에서 검증한다.
         List<Object> values = List.of(
                 document.path("address_name").asText(""),
                 resolvePhone(row, document),
@@ -473,22 +549,23 @@ public final class PlaceGeocodingBatch {
                 document.path("place_url").asText("")
         );
         return new ValueRange()
-                .setRange(sheetTitle + "!K" + rowNumber + ":O" + rowNumber)
+                .setRange(layout.addressBlockRange(sheetTitle, rowNumber))
                 .setValues(List.of(values));
     }
 
-    private static ValueRange toReviewNoteValueRange(String sheetTitle, int rowNumber, String reason, List<String> candidates) {
-        // P열 "배치 매칭 메모(BE)" 전용 — 사람이 쓰는 검수메모(J열)와 분리해서 덮어쓰지 않는다.
+    private static ValueRange toReviewNoteValueRange(SheetLayout layout, String sheetTitle, int rowNumber,
+                                                     String reason, List<String> candidates) {
+        // "배치 매칭 메모 (BE)" 전용 — 사람이 쓰는 검수 메모와 분리해서 덮어쓰지 않는다.
         String note = candidates.isEmpty() ? reason : reason + ": " + String.join(" | ", candidates);
         return new ValueRange()
-                .setRange(sheetTitle + "!P" + rowNumber)
+                .setRange(layout.matchNoteRange(sheetTitle, rowNumber))
                 .setValues(List.of(List.of(note)));
     }
 
-    private static ValueRange toClearReviewNoteValueRange(String sheetTitle, int rowNumber) {
-        // 확정된 행은 예전 미확정 사유가 남아있으면 헷갈릴 수 있어 P열을 비운다.
+    private static ValueRange toClearReviewNoteValueRange(SheetLayout layout, String sheetTitle, int rowNumber) {
+        // 확정된 행은 예전 미확정 사유가 남아있으면 헷갈릴 수 있어 비운다.
         return new ValueRange()
-                .setRange(sheetTitle + "!P" + rowNumber)
+                .setRange(layout.matchNoteRange(sheetTitle, rowNumber))
                 .setValues(List.of(List.of("")));
     }
 

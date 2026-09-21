@@ -14,6 +14,8 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
+import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+
 public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
 
     boolean existsByMemberIdAndCourseId(Long memberId, Long courseId);
@@ -56,7 +58,8 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
     @Query("SELECT c.id FROM CourseLike cs " +
             "JOIN Course c ON c.id = cs.courseId " +
             "JOIN Journal j ON j.id = c.journalId " +
-            "WHERE cs.memberId = :memberId AND j.isPublic = true")
+            "JOIN Member mem ON mem.id = c.memberId " +
+            "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN)
     List<Long> findVisibleLikedCourseIds(@Param("memberId") Long memberId);
 
     // 좋아요한 코스 목록 (최근 좋아요순). 카드에 필요한 역/대표 호선까지 한 번에 가져온다(코스마다 조회하면 N+1).
@@ -74,8 +77,9 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
             "JOIN Course c ON c.id = cs.courseId " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE cs.memberId = :memberId AND j.isPublic = true " +
+            "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "ORDER BY cs.createdAt DESC, cs.id DESC")
     List<LikedCourseView> findLikedCourses(@Param("memberId") Long memberId, Pageable pageable);
 
@@ -88,8 +92,9 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
             "JOIN Course c ON c.id = cs.courseId " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Station s ON s.id = c.stationId " +
+            "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE cs.memberId = :memberId AND j.isPublic = true " +
+            "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "AND (cs.createdAt < :likedAt OR (cs.createdAt = :likedAt AND cs.id < :likeId)) " +
             "ORDER BY cs.createdAt DESC, cs.id DESC")
     List<LikedCourseView> findLikedCoursesAfterCursor(@Param("memberId") Long memberId,

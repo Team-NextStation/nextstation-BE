@@ -9,8 +9,11 @@ import java.util.List;
 @Schema(description = "장소를 포함한 코스 카드")
 public record PlaceCourseResponse(
 
-        @Schema(description = "코스 ID (누르면 코스 상세로 이동)", example = "1")
-        Long courseId,
+        @Schema(description = """
+                여행일지 ID. 카드를 누르면 이 id로 여행일지 상세를 연다.
+                이 목록은 공개된 여행일지가 있는 코스만 노출하므로 항상 값이 있다.
+                """, example = "10")
+        Long journalId,
 
         @Schema(description = "카드에 표시할 이름. journal.title을 사용한다.", example = "주연의 보문역 여행")
         String name,

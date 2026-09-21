@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.csv.DuplicateHeaderMode;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
@@ -57,11 +58,6 @@ public class PlaceSeeder implements ApplicationRunner {
     private static final String PROGRESS_STATUS_DONE = "검수 완료";
     // CSV 해시를 기록하는 마커 파일. build/는 이미 gitignore 대상이라 별도 설정이 필요하지 않다.
     private static final Path SEED_HASH_MARKER = Path.of("build", "place-seed.sha256");
-
-    private static final String[] CSV_HEADERS = {
-            "담당자", "진행 상태", "호선", "역명", "카테고리", "장소명", "해시태그 1", "해시태그 2", "한 줄 설명", "검수메모",
-            "주소", "전화번호", "x좌표", "y좌표", "카카오맵 URL"
-    };
 
     private final PlaceRepository placeRepository;
     private final PlaceSeedWriter placeSeedWriter;
@@ -203,12 +199,18 @@ public class PlaceSeeder implements ApplicationRunner {
         return id.isBlank() ? null : id;
     }
 
-    private List<PlaceSeedRow> readSeedRows(byte[] csvBytes,
-                                            Map<String, List<PlaceSeedImage>> imagesByKakaoPlaceId) throws IOException {
+    /**
+     * 시트 컬럼이 앞에 추가돼도 안 깨지도록 첫 줄을 헤더로 읽는다.
+     * places.csv 끝에 이름 없는 빈 컬럼이 있어 중복·누락 헤더를 허용해야 한다.
+     */
+    List<PlaceSeedRow> readSeedRows(byte[] csvBytes,
+                                    Map<String, List<PlaceSeedImage>> imagesByKakaoPlaceId) throws IOException {
         CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setHeader(CSV_HEADERS)
+                .setHeader()
                 .setSkipHeaderRecord(true)
                 .setIgnoreSurroundingSpaces(true)
+                .setDuplicateHeaderMode(DuplicateHeaderMode.ALLOW_ALL)
+                .setAllowMissingColumnNames(true)
                 .build();
 
         List<PlaceSeedRow> rows = new ArrayList<>();
@@ -238,9 +240,13 @@ public class PlaceSeeder implements ApplicationRunner {
 
                 String kakaoPlaceUrl = blankToNull(record.get("카카오맵 URL"));
                 String kakaoPlaceId = extractKakaoPlaceId(kakaoPlaceUrl);
-                List<PlaceSeedImage> images = kakaoPlaceId == null
-                        ? List.of()
-                        : imagesByKakaoPlaceId.getOrDefault(kakaoPlaceId, List.of());
+                // 운영 반영이 (역명, place id)로 기존 행을 찾는다. id가 없으면 매번 신규로 적재된다.
+                if (kakaoPlaceId == null) {
+                    log.warn("카카오맵 URL이 없어 시딩에서 제외합니다. row={}, 역명={}, 장소명={}",
+                            record.getRecordNumber(), record.get("역명").trim(), placeName);
+                    continue;
+                }
+                List<PlaceSeedImage> images = imagesByKakaoPlaceId.getOrDefault(kakaoPlaceId, List.of());
 
                 rows.add(new PlaceSeedRow(
                         record.get("역명").trim(),
@@ -252,7 +258,7 @@ public class PlaceSeeder implements ApplicationRunner {
                         blankToNull(record.get("전화번호")),
                         Double.valueOf(xCoordText),
                         Double.valueOf(yCoordText),
-                        kakaoPlaceUrl,
+                        kakaoPlaceId,
                         images
                 ));
             }

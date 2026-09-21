@@ -6,7 +6,6 @@ import com.cotato.nextstation.domain.course.entity.CourseSort;
 import com.cotato.nextstation.domain.course.service.query.ConceptTourQueryService;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
 import com.cotato.nextstation.global.exception.GlobalExceptionHandler;
-import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import com.cotato.nextstation.global.jwt.JwtProvider;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,12 +71,12 @@ class ConceptTourControllerTest {
     }
 
     @Test
-    @DisplayName("컨셉 목록은 토큰이 없으면 401이다")
+    @DisplayName("컨셉 목록은 토큰 없이도 조회할 수 있다")
     void getConceptTours_withoutToken() throws Exception {
-        // 둘러보기 탭 전체가 로그인 필수라 개인화 데이터가 없는 목록도 막는다
+        given(conceptTourQueryService.getConceptTours()).willReturn(List.of());
+
         mockMvc.perform(get("/api/v1/explore/concept-tours"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(GlobalErrorCode.UNAUTHORIZED.getCode()));
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -93,6 +92,18 @@ class ConceptTourControllerTest {
                 .andExpect(status().isOk());
 
         verify(courseQueryService).getConceptTourCourses(1L, 1L, CourseSort.POPULAR, null, 5);
+    }
+
+    @Test
+    @DisplayName("컨셉별 코스는 토큰 없이도 조회하고 memberId로 null을 넘긴다")
+    void getConceptTourCourses_withoutToken() throws Exception {
+        given(courseQueryService.getConceptTourCourses(eq(null), eq(1L), any(), any(), any()))
+                .willReturn(new ExploreCourseListResponse(List.of(), List.of(), null, false));
+
+        mockMvc.perform(get("/api/v1/explore/concept-tours/{conceptTourId}/courses", 1L))
+                .andExpect(status().isOk());
+
+        verify(courseQueryService).getConceptTourCourses(eq(null), eq(1L), isNull(), isNull(), isNull());
     }
 
     @Test

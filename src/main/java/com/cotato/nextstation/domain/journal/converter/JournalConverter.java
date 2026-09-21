@@ -8,11 +8,13 @@ import com.cotato.nextstation.domain.journal.dto.response.MyJournalListResponse;
 import com.cotato.nextstation.domain.journal.dto.response.MyJournalResponse;
 import com.cotato.nextstation.domain.journal.dto.response.UncompletedJournalListResponse;
 import com.cotato.nextstation.domain.journal.entity.Journal;
+import com.cotato.nextstation.domain.journal.entity.JournalImage;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.CourseSnapshotView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJournalCardView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.stamp.entity.MemberStamp;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import org.springframework.stereotype.Component;
@@ -37,15 +39,17 @@ public class JournalConverter {
             String courseName,
             List<String> tags,
             List<CoursePlaceInfoResponse> coursePlaces,
-            Map<Long, PlaceInfoResponse> placeInfoMap
+            Map<Long, HistoricalPlaceInfoResponse> placeInfoMap
     ) {
         List<JournalWriteInfoResponse.PlaceSimpleResponse> places = coursePlaces.stream()
                 .map(cp -> {
-                    PlaceInfoResponse info = placeInfoMap.get(cp.placeId());
+                    HistoricalPlaceInfoResponse info = placeInfoMap.get(cp.placeId());
                     String placeName = info != null ? info.placeName() : null;
+                    PlaceStatus placeStatus = info != null ? info.placeStatus() : null;
 
                     return new JournalWriteInfoResponse.PlaceSimpleResponse(cp.placeId(),
                             placeName,
+                            placeStatus,
                             cp.orderNum()
                     );
                 } )
@@ -121,9 +125,9 @@ public class JournalConverter {
             boolean isMine,
             boolean isLiked,
             List<String> tags,
-            List<String> imageUrls,
+            List<JournalImage> journalImages,
             List<CoursePlaceInfoResponse> coursePlaces,
-            Map<Long, PlaceInfoResponse> placeInfoMap,
+            Map<Long, HistoricalPlaceInfoResponse> placeInfoMap,
             Map<Long, PlaceReview> reviewByPlaceId,
             Map<Long, String> imageUrlByReviewId
     ) {
@@ -133,6 +137,12 @@ public class JournalConverter {
 
         List<JournalDetailResponse.VisitedPlaceResponse> visitedPlaces =
                 toVisitedPlaceResponses(coursePlaces, placeInfoMap, reviewByPlaceId, imageUrlByReviewId);
+
+        // PATCH 요청(journalPhotos[].photoId)에서 KEEP/DELETE 대상을 특정할 수 있도록
+        // imageUrl뿐 아니라 photoId도 함께 내려준다.
+        List<JournalDetailResponse.JournalPhotoResponse> photos = journalImages.stream()
+                .map(image -> new JournalDetailResponse.JournalPhotoResponse(image.getId(), image.getImageUrl()))
+                .toList();
 
         return new JournalDetailResponse(
                 journal.getMember().getId(),
@@ -151,7 +161,7 @@ public class JournalConverter {
                 journal.getTravelDuration(),
                 viewCount,
                 courseSnapshot.getLikeCount(),
-                imageUrls,
+                photos,
                 journal.getOverallReview(),
                 visitedPlaces
         );
@@ -159,13 +169,13 @@ public class JournalConverter {
 
     private List<JournalDetailResponse.VisitedPlaceResponse> toVisitedPlaceResponses(
             List<CoursePlaceInfoResponse> coursePlaces,
-            Map<Long, PlaceInfoResponse> placeInfoMap,
+            Map<Long, HistoricalPlaceInfoResponse> placeInfoMap,
             Map<Long, PlaceReview> reviewByPlaceId,
             Map<Long, String> imageUrlByReviewId
     ) {
         return coursePlaces.stream()
                 .map(cp -> {
-                    PlaceInfoResponse placeInfo = placeInfoMap.get(cp.placeId());
+                    HistoricalPlaceInfoResponse placeInfo = placeInfoMap.get(cp.placeId());
                     PlaceReview review = reviewByPlaceId.get(cp.placeId());
                     String reviewImageUrl = review != null
                             ? imageUrlByReviewId.get(review.getId())
@@ -177,6 +187,7 @@ public class JournalConverter {
                             placeInfo != null ? placeInfo.placeName() : null,
                             placeInfo != null ? placeInfo.xCoordinate() : null,
                             placeInfo != null ? placeInfo.yCoordinate() : null,
+                            placeInfo != null ? placeInfo.placeStatus() : null,
                             review != null ? review.getReview() : null,
                             reviewImageUrl
                     );

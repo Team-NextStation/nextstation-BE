@@ -10,9 +10,9 @@ import java.util.List;
 @Schema(description = "코스 생성 요청")
 public record CourseCreateRequest(
 
-        @Schema(description = "코스 이름 (최대 20자)", example = "보문역 코스")
+        @Schema(description = "코스 이름 (최대 100자)", example = "보문역 코스")
         @NotBlank(message = "코스 이름은 필수입니다.")
-        @Size(max = 20, message = "코스 이름은 최대 20자까지 입력할 수 있어요.")
+        @Size(max = 100, message = "코스 이름은 최대 100자까지 입력할 수 있어요.")
         String name,
 
         @Schema(description = "역 ID", example = "1")

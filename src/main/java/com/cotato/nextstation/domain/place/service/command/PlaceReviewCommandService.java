@@ -1,5 +1,7 @@
 package com.cotato.nextstation.domain.place.service.command;
 
+import com.cotato.nextstation.domain.course.dto.response.CoursePlaceInfoResponse;
+import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
 import com.cotato.nextstation.domain.journal.dto.request.JournalUpdateRequest;
 import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.journal.enums.ImageAction;
@@ -19,9 +21,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -45,11 +50,13 @@ public class PlaceReviewCommandService {
     private final PlaceRepository placeRepository;
     private final PlaceReviewRepository placeReviewRepository;
     private final PlaceReviewImageRepository placeReviewImageRepository;
+    private final CourseQueryService courseQueryService;
+    private final PlaceReviewImageSaver placeReviewImageSaver;
     private final ProfanityFilter profanityFilter;
 
 
     // 여행일지 작성 시 장소 리뷰 일괄 저장
-    public void createPlaceReviews(Journal journal, List<PlaceReviewCreateRequest> requests) {
+    public void createPlaceReviews(Journal journal, Long courseId, List<PlaceReviewCreateRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return;
         }
@@ -61,6 +68,9 @@ public class PlaceReviewCommandService {
         List<Long> placeIds = requests.stream()
                 .map(PlaceReviewCreateRequest::placeId)
                 .toList();
+
+        // 이 코스에 포함된 장소만 리뷰 작성을 허용한다 (실존 여부와는 별개 검증).
+        validatePlacesInCourse(courseId, placeIds);
 
         Map<Long, Place> placeMap = placeRepository.findAllById(placeIds).stream()
                         .collect(Collectors.toMap(Place::getId, Function.identity()));
@@ -84,21 +94,51 @@ public class PlaceReviewCommandService {
         // 리뷰 일괄 저장
         List<PlaceReview> savedReviews = placeReviewRepository.saveAll(placeReviews);
 
-        // 리뷰 이미지 일괄 저장
-        List<PlaceReviewImage> reviewImages = IntStream.range(0, requests.size())
-                .filter(i -> requests.get(i).imageUrl() != null)
-                .mapToObj(i -> PlaceReviewImage.builder()
-                .placeReview(savedReviews.get(i))
-                .imageUrl(requests.get(i).imageUrl())
-                        .build())
-                .toList();
+        // 이 시점의 PlaceReview/Journal은 이 메서드를 감싼 바깥 트랜잭션이 아직 커밋 전이라
+        // 여기서 바로 REQUIRES_NEW로 이미지를 저장하면, 그 새 트랜잭션(=새 커넥션)이 아직
+        // 커밋되지 않은 부모 행을 참조하게 돼 락 대기에 걸린다(바깥 트랜잭션은 이 호출이
+        // 끝나야 커밋되므로, 사실상 자기 자신을 기다리는 셈이 된다). 그래서 이미지 저장은
+        // 바깥 트랜잭션이 실제로 커밋된 뒤(afterCommit)로 미룬다 - 그때는 PlaceReview/Journal이
+        // 이미 다른 트랜잭션에서도 보이는 상태라 REQUIRES_NEW가 안전하다.
+        registerImageSaveAfterCommit(requests, savedReviews);
+    }
 
-            if (!reviewImages.isEmpty()) {
-                placeReviewImageRepository.saveAll(reviewImages);
-            };
+    private void registerImageSaveAfterCommit(List<PlaceReviewCreateRequest> requests, List<PlaceReview> savedReviews) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                IntStream.range(0, requests.size())
+                        .filter(i -> requests.get(i).imageUrl() != null)
+                        .forEach(i -> saveReviewImage(savedReviews.get(i), requests.get(i).imageUrl()));
+            }
+        });
+    }
 
+    // 코스에 속하지 않은 장소는 리뷰를 남길 수 없다. 코스에 속한 placeId 집합과 요청을 대조한다.
+    private void validatePlacesInCourse(Long courseId, List<Long> placeIds) {
+        Set<Long> coursePlaceIds = courseQueryService.getCoursePlaces(courseId).stream()
+                .map(CoursePlaceInfoResponse::placeId)
+                .collect(Collectors.toSet());
+        placeIds.stream()
+                .filter(placeId -> !coursePlaceIds.contains(placeId))
+                .findFirst()
+                .ifPresent(placeId -> {
+                    log.warn("코스에 속하지 않은 장소의 리뷰 작성 시도: courseId={}, placeId={}", courseId, placeId);
+                    throw new CustomException(PlaceErrorCode.PLACE_NOT_IN_COURSE);
+                });
+    }
 
-            // PlaceReviewImage 저장 실패 시 PlaceReview도 함께 롤백되는 상황
+    /**
+     * 이미지 저장 실패는 조용히 삼키고 로그만 남긴다. 사용자에게는 여행일지/리뷰가 정상
+     * 저장된 걸로 보여야 하며, 이미지 한 장이 실패했다고 이미 작성한 리뷰까지 잃으면 안 된다.
+     * PlaceReviewImageSaver가 REQUIRES_NEW + flush로 이 시점에 예외를 던지도록 보장한다.
+     */
+    private void saveReviewImage(PlaceReview placeReview, String imageUrl) {
+        try {
+            placeReviewImageSaver.save(placeReview, imageUrl);
+        } catch (Exception e) {
+            log.warn("장소 리뷰 이미지 저장 실패: placeReviewId={}, imageUrl={}", placeReview.getId(), imageUrl, e);
+        }
     }
 
     // 여행일지 수정 시 장소 리뷰 수정
@@ -114,8 +154,11 @@ public class PlaceReviewCommandService {
                         return new CustomException(PlaceErrorCode.PLACE_REVIEW_NOT_FOUND);
                     });
 
-            // 텍스트는 항상 반영
-            placeReview.update(request.review());
+            // review가 null이면 유지(사진만 바꾸는 요청을 위해 기존 텍스트를 다시 채워 보낼 필요가 없게 함),
+            // 빈 문자열("")을 명시적으로 보내면 텍스트를 비운다.
+            if (request.review() != null) {
+                placeReview.update(request.review());
+            }
 
             // imageAction null이면 KEEP으로 간주
             ImageAction action = request.imageAction() != null

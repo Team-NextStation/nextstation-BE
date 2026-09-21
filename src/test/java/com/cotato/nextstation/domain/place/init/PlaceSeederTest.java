@@ -50,6 +50,41 @@ class PlaceSeederTest {
     }
 
     @Test
+    @DisplayName("컬럼이 앞에 추가돼도 헤더 이름으로 값을 매핑한다")
+    void readSeedRowsMapsByHeaderName() throws IOException {
+        // 2차 수집 이후의 컬럼 순서. 수집 차수와 수정 여부가 앞에 붙어 이후 컬럼이 두 칸씩 밀렸다.
+        String csv = """
+                수집 차수,수정 여부,담당자,진행 상태,호선,역명,카테고리,장소명,해시태그 1,해시태그 2,한 줄 설명,검수 메모,주소,전화번호,x좌표,y좌표,카카오맵 URL,배치 매칭 메모 (BE)
+                1차,o,서은주,검수 완료,2호선,잠실나루역,식당,송봉칼국수,가성비,실내위주,따뜻한 칼국수,,서울 송파구 신천동 7,02-1234-5678,127.099280,37.518885,https://place.map.kakao.com/1584284345,
+                """;
+
+        List<PlaceSeedRow> rows = placeSeeder.readSeedRows(csv.getBytes(StandardCharsets.UTF_8), Map.of());
+
+        assertThat(rows).hasSize(1);
+        PlaceSeedRow row = rows.get(0);
+        assertThat(row.stationName()).isEqualTo("잠실나루역");
+        assertThat(row.categoryText()).isEqualTo("식당");
+        assertThat(row.placeName()).isEqualTo("송봉칼국수");
+        assertThat(row.hashtagTexts()).containsExactly("가성비", "실내위주");
+        assertThat(row.description()).isEqualTo("따뜻한 칼국수");
+        assertThat(row.address()).isEqualTo("서울 송파구 신천동 7");
+        assertThat(row.contactNumber()).isEqualTo("02-1234-5678");
+        assertThat(row.xCoordinate()).isEqualTo(127.099280);
+        assertThat(row.yCoordinate()).isEqualTo(37.518885);
+    }
+
+    @Test
+    @DisplayName("카카오맵 URL이 없는 행은 시딩하지 않는다")
+    void readSeedRowsSkipsRowWithoutKakaoPlaceUrl() throws IOException {
+        String csv = """
+                수집 차수,수정 여부,담당자,진행 상태,호선,역명,카테고리,장소명,해시태그 1,해시태그 2,한 줄 설명,검수 메모,주소,전화번호,x좌표,y좌표,카카오맵 URL,배치 매칭 메모 (BE)
+                2차,,서은주,검수 완료,2호선,잠실나루역,식당,카카오맵에 없는 곳,가성비,,설명,,서울 송파구 신천동 7,,127.099280,37.518885,,NO_RESULT
+                """;
+
+        assertThat(placeSeeder.readSeedRows(csv.getBytes(StandardCharsets.UTF_8), Map.of())).isEmpty();
+    }
+
+    @Test
     @DisplayName("카카오맵 URL의 마지막 세그먼트를 place id로 쓴다")
     void extractKakaoPlaceIdUsesLastSegment() {
         assertThat(placeSeeder.extractKakaoPlaceId("https://place.map.kakao.com/1584284345"))

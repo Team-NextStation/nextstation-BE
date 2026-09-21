@@ -11,12 +11,12 @@ import java.util.List;
 public record CourseCopyRequest(
 
         @Schema(description = """
-                복사한 코스에 부여할 이름 (최대 20자, 필수).
+                복사한 코스에 부여할 이름 (최대 100자, 필수).
                 사용자가 이름을 고치지 않았으면 화면에 채워둔 원본 이름을 그대로 실어 보낸다.
                 서버는 받은 값을 그대로 저장하며, 생략하면 원본 이름으로 대체되지 않고 400이 응답된다.
                 """, example = "민성이랑 떠나는 느좋투어")
         @NotBlank(message = "코스 이름은 필수입니다.")
-        @Size(max = 20, message = "코스 이름은 최대 20자까지 입력할 수 있어요.")
+        @Size(max = 100, message = "코스 이름은 최대 100자까지 입력할 수 있어요.")
         String name,
 
         @Schema(description = """

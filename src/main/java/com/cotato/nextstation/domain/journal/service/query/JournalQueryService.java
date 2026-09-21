@@ -14,13 +14,14 @@ import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.journal.entity.JournalImage;
 import com.cotato.nextstation.domain.journal.enums.TravelDuration;
 import com.cotato.nextstation.domain.journal.exception.JournalErrorCode;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.journal.repository.JournalImageRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalImageRepository.JournalImageView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.CourseSnapshotView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJournalCardView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
 import com.cotato.nextstation.domain.place.entity.PlaceReviewImage;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
@@ -91,9 +92,9 @@ public class JournalQueryService {
                 .toList();
 
         // 5. placeIds → 장소 이름
-        Map<Long, PlaceInfoResponse> placeInfoMap = placeInfoQueryService.getPlaceInfos(placeIds)
+        Map<Long, HistoricalPlaceInfoResponse> placeInfoMap = placeInfoQueryService.getHistoricalPlaceInfos(placeIds)
                 .stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, Function.identity()));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, Function.identity()));
 
         // 6. placeIds → 태그 상위 3개
         List<String> tags = placeInfoQueryService.getTopTagNames(placeIds);
@@ -235,10 +236,18 @@ public class JournalQueryService {
         Journal journal = journalRepository.findById(journalId)
                 .orElseThrow(() -> new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND));
 
-        // 2. 본인 여부 확인 → 타인이면 공개 일지만 조회 가능
+        // 2. 본인 여부 확인 → 타인이면 공개 일지만 조회 가능.
+        // 비공개 일지의 존재 여부까지 드러내지 않도록 403이 아닌 404로 응답한다.
         boolean isOwner = journal.getMember().getId().equals(memberId);
         if (!isOwner && !journal.isPublic()) {
-            throw new CustomException(JournalErrorCode.JOURNAL_FORBIDDEN);
+            throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
+        }
+
+        // 2-1. 작성자가 탈퇴(WITHDRAWN)했으면 타인에게는 노출하지 않는다. 코스 목록 쪽은
+        // NOT_WITHDRAWN으로 걸러지지만, journalId를 직접 아는 경우(북마크·공유 링크 등)
+        // 목록을 거치지 않고 상세로 바로 들어올 수 있어 여기서도 방어한다.
+        if (!isOwner && journal.getMember().getStatus() == MemberStatus.WITHDRAWN) {
+            throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
         }
 
         // 3. memberStampId → courseId
@@ -261,23 +270,30 @@ public class JournalQueryService {
                 .toList();
 
         // 7. placeIds → 장소 이름
-        Map<Long, PlaceInfoResponse> placeInfoMap = placeInfoQueryService.getPlaceInfos(placeIds)
+        Map<Long, HistoricalPlaceInfoResponse> placeInfoMap = placeInfoQueryService.getHistoricalPlaceInfos(placeIds)
                 .stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, Function.identity()));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, Function.identity()));
 
         // 8. placeIds → 태그 상위 3개
         List<String> tags = placeInfoQueryService.getTopTagNames(placeIds);
 
-        // 9. journalId → 대표 사진 + 서브 사진
-        List<String> imageUrls = journalImageRepository.findByJournalIdOrderByIdAsc(journalId)
-                .stream()
-                .map(JournalImage::getImageUrl)
-                .toList();
+        // 9. journalId → 대표 사진 + 서브 사진. PATCH 수정 시 journalPhotos[].photoId로 KEEP/DELETE
+        // 대상을 특정해야 해서, imageUrl만 뽑지 않고 엔티티(id 포함)를 그대로 컨버터에 넘긴다.
+        List<JournalImage> journalImages = journalImageRepository.findByJournalIdOrderByIdAsc(journalId);
 
         // 10. journalId → 장소 리뷰 + 리뷰 이미지
         List<PlaceReview> placeReviews = placeReviewRepository.findByJournalId(journalId);
+        Map<Long, Long> placeIdByReviewId = placeReviewRepository.findReviewPlaceIdsByJournalId(journalId).stream()
+                .collect(Collectors.toMap(
+                        PlaceReviewRepository.ReviewPlaceView::getReviewId,
+                        PlaceReviewRepository.ReviewPlaceView::getPlaceId
+                ));
         Map<Long, PlaceReview> reviewByPlaceId = placeReviews.stream()
-                .collect(Collectors.toMap(pr -> pr.getPlace().getId(), Function.identity()));
+                .filter(review -> placeIdByReviewId.containsKey(review.getId()))
+                .collect(Collectors.toMap(
+                        review -> placeIdByReviewId.get(review.getId()),
+                        Function.identity()
+                ));
 
         List<Long> reviewIds = placeReviews.stream().map(PlaceReview::getId).toList();
         Map<Long, String> imageUrlByReviewId = placeReviewImageRepository
@@ -299,7 +315,7 @@ public class JournalQueryService {
         int viewCount = updatedViewCount != null ? updatedViewCount : courseSnapshot.getViewCount();
 
         return journalConverter.toJournalDetailResponse(
-                journal, line, stationName, courseSnapshot, viewCount, isOwner, isLiked, tags, imageUrls,
+                journal, line, stationName, courseSnapshot, viewCount, isOwner, isLiked, tags, journalImages,
                 coursePlaces, placeInfoMap, reviewByPlaceId, imageUrlByReviewId);
     }
 

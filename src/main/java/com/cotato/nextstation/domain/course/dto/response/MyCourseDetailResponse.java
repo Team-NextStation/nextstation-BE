@@ -14,6 +14,10 @@ public record MyCourseDetailResponse(
         @Schema(description = "코스 이름", example = "민성이랑 떠나는 느좋투어")
         String name,
 
+        @Schema(description = "공유 링크 조회용 토큰. `GET /api/v1/courses/share/{shareToken}`에 쓴다",
+                example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+        String shareToken,
+
         @Schema(description = "코스가 속한 역 ID", example = "6")
         Long stationId,
 

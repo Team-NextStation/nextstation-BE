@@ -545,9 +545,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<CommonResponse<Void>> handleCustomException(CustomException ex) {
-        log.warn("CustomException: code={}, message={}", ex.getErrorCode().getCode(), ex.getMessage());
+        HttpStatus status = ex.getErrorCode().getHttpStatus();
+        if (status.is5xxServerError()) {
+            log.error("CustomException: code={}, message={}", ex.getErrorCode().getCode(), ex.getMessage(), ex);
+        } else {
+            log.warn("CustomException: code={}, message={}", ex.getErrorCode().getCode(), ex.getMessage());
+        }
         CommonResponse<Void> response = CommonResponse.error(ex.getErrorCode());
-        return ResponseEntity.status(ex.getErrorCode().getHttpStatus()).body(response);
+        return ResponseEntity.status(status).body(response);
     }
 
     // 요청 본문 JSON 파싱 실패 -> 400
@@ -603,6 +608,7 @@ public class GlobalExceptionHandler {
 
 - 예외 메시지에 민감 정보(비밀번호, 토큰 등)를 포함하지 않는다.
 - 예상 가능한 비즈니스 예외는 필요 시 `warn`, 예상치 못한 예외는 `error`로 로깅한다.
+- 단, `CustomException`이라도 `ErrorCode`의 상태가 5xx면 `error`로 로깅한다. 운영 환경의 디스코드 알림이 ERROR만 전송하므로, 서버 결함이 `warn`으로 남으면 알림이 누락된다.
 - HTTP 상태 코드는 `ErrorCode`의 `httpStatus`를 기준으로 내려가도록 하고, 무분별한 200 응답을 지양한다.
 - 새로운 예외 케이스가 필요하면 예외 클래스를 늘리기보다 해당 도메인의 `ErrorCode`에 상수를 추가한다.
 
@@ -819,11 +825,20 @@ class MemberQueryServiceTest {
 
 - `System.out.println` 대신 SLF4J(`@Slf4j`) 로거를 사용한다.
 - 로그 레벨을 상황에 맞게 사용한다.
-    - `ERROR`: 예상치 못한 시스템 오류
+    - `ERROR`: 예상치 못한 시스템 오류, 5xx 응답으로 이어지는 서버 결함
     - `WARN`: 예상 가능한 예외, 주의가 필요한 상황
     - `INFO`: 주요 비즈니스 흐름
     - `DEBUG`: 개발/디버깅용 상세 정보
 - 로그 메시지는 파라미터 바인딩(`log.info("id={}", id)`)을 사용한다. (문자열 연결 지양)
+
+### 운영 에러 알림
+
+- 운영(`prod`) 환경의 `ERROR` 로그는 `logback-spring.xml`의 디스코드 웹훅 appender로 전송된다.
+- 설정은 `springProfile name="prod"` 안에 두어 로컬에서는 appender 자체가 생성되지 않는다.
+- 웹훅 URL은 `logging.discord-error.webhook-url`(환경변수 `DISCORD_ERROR_WEBHOOK_URL`)로 주입하고, 설정 파일에 값을 직접 적지 않는다.
+- 전송은 `AsyncAppender`로 감싸 요청 스레드를 막지 않게 하고, `ThresholdFilter`로 `ERROR`만 통과시킨다.
+- `AsyncAppender`에는 `neverBlock=true`를 명시한다. `ERROR`는 `discardingThreshold`로 버려지지 않아, 이 설정이 없으면 큐 포화 시 로그를 남긴 요청 스레드가 대기한다. 알림 유실을 감수하고 응답 지연을 막는 선택이며 원본 로그는 콘솔에 남는다.
+- 따라서 **알림이 필요한 상황은 반드시 `ERROR` 레벨로 남겨야 한다.** `warn`으로 남긴 서버 결함은 알림이 오지 않는다.
 
 ---
 

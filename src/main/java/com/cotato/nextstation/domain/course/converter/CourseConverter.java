@@ -7,6 +7,7 @@ import com.cotato.nextstation.domain.course.dto.response.CourseCreateResponse;
 import com.cotato.nextstation.domain.course.dto.response.CourseInfoResponse;
 import com.cotato.nextstation.domain.course.dto.response.CourseUpdateResponse;
 import com.cotato.nextstation.domain.course.dto.response.CoursePlaceInfoResponse;
+import com.cotato.nextstation.domain.course.dto.response.CourseShareResponse;
 import com.cotato.nextstation.domain.course.dto.response.ExploreCourseListResponse;
 import com.cotato.nextstation.domain.course.dto.response.ExploreStationResponse;
 import com.cotato.nextstation.domain.course.dto.response.ExploreCourseResponse;
@@ -32,7 +33,7 @@ import com.cotato.nextstation.domain.course.repository.CourseRepository.PlaceCou
 import com.cotato.nextstation.domain.course.repository.CourseRepository.PopularCourseView;
 import com.cotato.nextstation.domain.course.repository.CourseLikeRepository.LikedCourseView;
 import com.cotato.nextstation.domain.journal.dto.response.JournalCardInfoResponse;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import com.cotato.nextstation.domain.station.entity.LineCode;
 import org.springframework.stereotype.Component;
@@ -85,7 +86,7 @@ public class CourseConverter {
     }
 
     public CourseCreateResponse toCreateResponse(Course course) {
-        return new CourseCreateResponse(course.getId(), course.getName(), course.getCreatedAt());
+        return new CourseCreateResponse(course.getId(), course.getName(), course.getShareToken(), course.getCreatedAt());
     }
 
     public CourseUpdateResponse toUpdateResponse(Course course) {
@@ -109,6 +110,7 @@ public class CourseConverter {
         return new MyCourseDetailResponse(
                 course.getCourseId(),
                 course.getName(),
+                course.getShareToken(),
                 course.getStationId(),
                 course.getStationName(),
                 toLine(course.getLineId(), course.getLineName(), course.getLineCode()),
@@ -128,7 +130,18 @@ public class CourseConverter {
         );
     }
 
-    public CoursePlaceDetailResponse toCoursePlaceDetailResponse(PlaceInfoResponse place, int orderNum) {
+    public CourseShareResponse toCourseShareResponse(CourseDetailView course, List<CoursePlaceDetailResponse> places) {
+        return new CourseShareResponse(
+                course.getCourseId(),
+                course.getName(),
+                course.getStationId(),
+                course.getStationName(),
+                toLine(course.getLineId(), course.getLineName(), course.getLineCode()),
+                places
+        );
+    }
+
+    public CoursePlaceDetailResponse toCoursePlaceDetailResponse(HistoricalPlaceInfoResponse place, int orderNum) {
         return new CoursePlaceDetailResponse(
                 place.placeId(),
                 place.placeName(),
@@ -138,6 +151,7 @@ public class CourseConverter {
                 place.imageUrl(),
                 place.xCoordinate(),
                 place.yCoordinate(),
+                place.placeStatus(),
                 orderNum
         );
     }
@@ -252,7 +266,7 @@ public class CourseConverter {
                                                      List<String> tags, String imageUrl,
                                                      TravelDuration travelDuration) {
         return new PlaceCourseResponse(
-                course.getCourseId(),
+                course.getJournalId(),
                 course.getName(),
                 course.getStationId(),
                 course.getStationName(),

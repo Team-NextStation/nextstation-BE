@@ -52,7 +52,7 @@ public class JournalCommandService {
         validateUserText(request.title());
         validateUserText(request.overallReview());
         validatePlaceReviewTexts(request.placeReviews());
-        // memberStamp 소유권 검증 (반환값은 아래에서 코스에 일지를 연결하는 데 쓴다)
+        // memberStamp 소유권 검증 + courseId 확보 (장소 리뷰의 코스 소속 검증, 코스에 일지 연결하는 데 사용)
         Long courseId = memberStampQueryService.getCourseId(memberId, request.memberStampId());
 
         Member member = memberRepository.getReferenceById(memberId);
@@ -107,7 +107,7 @@ public class JournalCommandService {
                                 .toList();
 
 
-        placeReviewCommandService.createPlaceReviews(journal, reviewRequests);
+        placeReviewCommandService.createPlaceReviews(journal, courseId, reviewRequests);
 
         // 코스에 이 일지를 연결한다. 둘러보기·검색·좋아요·"내 코스로 만들기"가
         // course.journal_id로 공개 여부를 판정하므로, 연결하지 않으면 공개로 써도 어디에도 노출되지 않는다.
@@ -153,7 +153,12 @@ public class JournalCommandService {
 
                     }
                     case UPDATE -> {
-                        // 새 이미지 추가 (photoId 없음)
+                        // 새 이미지 추가 (photoId 없음). imageUrl이 없으면 DB NOT NULL 제약에 그대로
+                        // 부딪혀 500이 나므로, PlaceReviewCommandService.updatePlaceReviews와 같은
+                        // 방식으로 여기서 먼저 400을 던진다.
+                        if (photo.imageUrl() == null) {
+                            throw new CustomException(JournalErrorCode.INVALID_JOURNAL_PHOTO);
+                        }
                         journalImageRepository.save(
                                 JournalImage.builder()
                                         .journal(journal)

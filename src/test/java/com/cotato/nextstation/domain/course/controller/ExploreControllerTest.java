@@ -2,6 +2,7 @@ package com.cotato.nextstation.domain.course.controller;
 
 import com.cotato.nextstation.domain.course.dto.request.ExploreCourseCondition;
 import com.cotato.nextstation.domain.course.dto.response.ExploreCourseListResponse;
+import com.cotato.nextstation.domain.course.dto.response.ExploreResponse;
 import com.cotato.nextstation.domain.course.entity.CourseSort;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
 import com.cotato.nextstation.domain.course.service.query.ExploreQueryService;
@@ -10,6 +11,7 @@ import com.cotato.nextstation.global.exception.GlobalExceptionHandler;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import com.cotato.nextstation.global.jwt.JwtProvider;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -60,12 +62,27 @@ class ExploreControllerTest {
     }
 
     @Test
-    @DisplayName("둘러보기 목록은 토큰이 없으면 401이다")
+    @DisplayName("둘러보기 메인은 토큰 없이도 조회하고 memberId로 null을 넘긴다")
+    void getExplore_withoutToken() throws Exception {
+        given(exploreQueryService.getExplore(null))
+                .willReturn(new ExploreResponse(List.of(), List.of(), List.of(), null, List.of()));
+
+        mockMvc.perform(get("/api/v1/explore"))
+                .andExpect(status().isOk());
+
+        verify(exploreQueryService).getExplore(null);
+    }
+
+    @Test
+    @DisplayName("둘러보기 목록은 토큰 없이도 조회하고 memberId로 null을 넘긴다")
     void getExploreCourses_withoutToken() throws Exception {
-        // 둘러보기 탭 전체가 로그인 필수다
+        given(courseQueryService.getExploreCourses(eq(null), any(), any(), any(), any()))
+                .willReturn(new ExploreCourseListResponse(List.of(), List.of(), null, false));
+
         mockMvc.perform(get("/api/v1/explore/courses"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(GlobalErrorCode.UNAUTHORIZED.getCode()));
+                .andExpect(status().isOk());
+
+        verify(courseQueryService).getExploreCourses(eq(null), any(), eq(null), eq(null), eq(null));
     }
 
     @Test
@@ -119,11 +136,27 @@ class ExploreControllerTest {
     }
 
     @Test
-    @DisplayName("많이 찾는 코스는 토큰이 없으면 401이다")
+    @DisplayName("많이 찾는 코스는 토큰 없이도 조회하고 memberId로 null을 넘긴다")
     void getMostLikedCourses_withoutToken() throws Exception {
+        given(courseQueryService.getMostLikedCourses(null, null, null))
+                .willReturn(new ExploreCourseListResponse(List.of(), List.of(), null, false));
+
         mockMvc.perform(get("/api/v1/explore/courses/popular"))
+                .andExpect(status().isOk());
+
+        verify(courseQueryService).getMostLikedCourses(null, null, null);
+    }
+
+    @Test
+    @DisplayName("선택적 인증 API도 위변조된 토큰을 보내면 401을 반환한다")
+    void getExploreCourses_withInvalidToken() throws Exception {
+        given(jwtProvider.parseClaims("invalid-token"))
+                .willThrow(new MalformedJwtException("malformed"));
+
+        mockMvc.perform(get("/api/v1/explore/courses")
+                        .header("Authorization", "Bearer invalid-token"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(GlobalErrorCode.UNAUTHORIZED.getCode()));
+                .andExpect(jsonPath("$.code").value(GlobalErrorCode.INVALID_TOKEN.getCode()));
     }
 
     @Test

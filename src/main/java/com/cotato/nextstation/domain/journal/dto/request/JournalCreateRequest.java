@@ -19,7 +19,7 @@ public record JournalCreateRequest(
         Long memberStampId,
 
         @Schema(description = "여행일지 제목", example = "보문 골목 산책")
-        @Size(max = 20, message = "제목은 최대 20자까지 입력 가능합니다.") // 코스 이름이 최대 20자 -> 통일
+        @Size(max = 100, message = "제목은 최대 100자까지 입력 가능합니다.")
         @NotBlank(message = "제목은 필수입니다.")
         String title,
 

@@ -69,11 +69,16 @@ public class GlobalExceptionHandler {
 
     /**
      * 커스텀 예외 -> 에러 코드에 매핑된 HTTP 상태 코드 반환
+     * 5xx는 서버 결함이므로 ERROR로 남겨 운영 알림(디스코드) 대상이 되게 한다.
      */
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<CommonResponse<Void>> handleCustomException(CustomException ex) {
-        log.warn("CustomException: code={}, message={}", ex.getErrorCode().getCode(), ex.getMessage());
         HttpStatus status = ex.getErrorCode().getHttpStatus();
+        if (status.is5xxServerError()) {
+            log.error("CustomException: code={}, message={}", ex.getErrorCode().getCode(), ex.getMessage(), ex);
+        } else {
+            log.warn("CustomException: code={}, message={}", ex.getErrorCode().getCode(), ex.getMessage());
+        }
 
         CommonResponse<Void> response = CommonResponse.error(ex.getErrorCode());
         return ResponseEntity.status(status).body(response);

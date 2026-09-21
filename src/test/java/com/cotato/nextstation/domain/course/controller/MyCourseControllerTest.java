@@ -10,6 +10,7 @@ import com.cotato.nextstation.domain.course.dto.response.MyCourseDetailResponse;
 import com.cotato.nextstation.domain.course.dto.response.MyCourseListResponse;
 import com.cotato.nextstation.domain.course.dto.response.CoursePlaceDetailResponse;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.exception.GlobalExceptionHandler;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
@@ -176,26 +177,29 @@ class MyCourseControllerTest {
     @DisplayName("코스 확인은 역 이름과 장소를 순서대로 좌표까지 담아 반환한다")
     void getMyCourseDetail_success() throws Exception {
         given(courseQueryService.getMyCourseDetail(1L, 1L)).willReturn(new MyCourseDetailResponse(
-                1L, "민성이랑 떠나는 느좋투어", 6L, "신림역",
+                1L, "민성이랑 떠나는 느좋투어", "share-token-1", 6L, "신림역",
                 new LineSummaryResponse(2L, "2호선", LineCode.LINE_2),
                 List.of(
                         new CoursePlaceDetailResponse(11L, "보문숲길도서관", "혼자 조용히 머물기 좋은 동네 도서관",
-                                "CULTURE", "문화공간", "https://img/1.jpg", 127.0345, 37.5804, 1),
+                                "CULTURE", "문화공간", "https://img/1.jpg", 127.0345, 37.5804, PlaceStatus.APPROVED, 1),
                         new CoursePlaceDetailResponse(12L, "보문사", "천년 고찰",
-                                "CULTURE", "문화공간", null, 127.0350, 37.5810, 2))));
+                                "CULTURE", "문화공간", null, 127.0350, 37.5810, PlaceStatus.DELETED, 2))));
 
         mockMvc.perform(get("/api/v1/members/me/courses/{courseId}", 1L)
                         .header("Authorization", "Bearer " + TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.courseId").value(1))
                 .andExpect(jsonPath("$.data.name").value("민성이랑 떠나는 느좋투어"))
+                .andExpect(jsonPath("$.data.shareToken").value("share-token-1"))
                 .andExpect(jsonPath("$.data.line.code").value("LINE_2"))
                 .andExpect(jsonPath("$.data.stationName").value("신림역"))
                 // 지도 핀을 찍으려면 좌표가 반드시 실려야 한다
                 .andExpect(jsonPath("$.data.places[0].xCoordinate").value(127.0345))
                 .andExpect(jsonPath("$.data.places[0].yCoordinate").value(37.5804))
+                .andExpect(jsonPath("$.data.places[0].placeStatus").value("APPROVED"))
                 .andExpect(jsonPath("$.data.places[0].orderNum").value(1))
                 .andExpect(jsonPath("$.data.places[1].placeName").value("보문사"))
+                .andExpect(jsonPath("$.data.places[1].placeStatus").value("DELETED"))
                 // 이미지가 없는 장소는 카테고리로 기본 이미지를 그리므로 카테고리가 함께 실려야 한다
                 .andExpect(jsonPath("$.data.places[1].imageUrl").isEmpty())
                 .andExpect(jsonPath("$.data.places[1].categoryCode").value("CULTURE"))

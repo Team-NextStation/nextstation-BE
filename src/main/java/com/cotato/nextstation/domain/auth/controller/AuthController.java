@@ -18,6 +18,7 @@ import com.cotato.nextstation.domain.auth.service.command.ProfileSetupCommandSer
 import com.cotato.nextstation.domain.auth.service.command.SignupCommandService;
 import com.cotato.nextstation.domain.auth.service.AuthTokenService;
 import com.cotato.nextstation.domain.auth.service.result.LoginResult;
+import com.cotato.nextstation.domain.auth.service.result.ProfileSetupResult;
 import com.cotato.nextstation.domain.auth.service.result.ReissueResult;
 import com.cotato.nextstation.domain.auth.util.RefreshTokenCookieFactory;
 import com.cotato.nextstation.global.common.response.CommonResponse;
@@ -144,6 +145,8 @@ public class AuthController {
             description = """
                     닉네임/프로필 사진/성별/생년월일을 설정하고 회원가입을 완료한다(status: PENDING -> ACTIVE).
                     - 로컬 회원가입(`/signup`)과 카카오 회원가입(`/kakao/login`의 `PENDING_PROFILE` 또는 `/kakao/signup`) 양쪽 흐름의 마지막 단계로 공통으로 쓰인다.
+                    - **설정 완료와 동시에 로그인 처리된다.** accessToken은 응답 body로, refreshToken은 httpOnly 쿠키(`refreshToken`)로 내려가므로 별도의 로그인 API 호출이 필요 없다(로그인 API와 동일).
+                      쿠키가 저장되려면 이 API 요청에도 `credentials: 'include'`가 필요하다.
                     - signupToken 인증 필요. 우측 상단 자물쇠(Authorize) 버튼을 눌러 위 API들의 응답으로 받은 signupToken 값을 그대로(Bearer 접두사 없이) 넣으면 된다.
                     - 프로필 사진은 선택 입력이며, presigned URL로 S3에 업로드 완료 후 받은 imageUrl을 그대로 넣으면 된다.
                     - 성별의 "선택 안함"도 `UNSPECIFIED`로 명시적으로 보내야 한다.
@@ -161,15 +164,21 @@ public class AuthController {
     @PostMapping("/profile")
     public CommonResponse<ProfileSetupResponse> setupProfile(
             @Parameter(hidden = true) @RequestHeader(value = "Authorization", required = false, defaultValue = "") String authorizationHeader,
-            @Valid @RequestBody ProfileSetupRequest request) {
-        ProfileSetupResponse response = profileSetupCommandService.setupProfile(
+            @Valid @RequestBody ProfileSetupRequest request,
+            HttpServletResponse httpResponse) {
+        ProfileSetupResult result = profileSetupCommandService.setupProfile(
                 authorizationHeader,
                 request.nickname(),
                 request.profileImageUrl(),
                 request.gender(),
                 request.birthDate()
         );
-        return CommonResponse.success(response);
+
+        ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
+
+        return CommonResponse.success(
+                new ProfileSetupResponse(result.memberId(), result.nickname(), result.status(), result.accessToken()));
     }
 
     @Tag(name = "로그인")
@@ -194,7 +203,7 @@ public class AuthController {
         ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
 
-        return CommonResponse.success(new LoginResponse(result.memberId(), result.accessToken(), result.restored()));
+        return CommonResponse.success(new LoginResponse(result.memberId(), result.accessToken(), result.restored(), result.role()));
     }
 
     @Tag(name = "로그인")
@@ -231,7 +240,7 @@ public class AuthController {
         ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
 
-        return CommonResponse.success(new ReissueResponse(result.accessToken()));
+        return CommonResponse.success(new ReissueResponse(result.accessToken(), result.role()));
     }
 
     @Tag(name = "로그인")

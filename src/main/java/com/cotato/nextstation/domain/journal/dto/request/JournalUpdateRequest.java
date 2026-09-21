@@ -18,7 +18,7 @@ public record JournalUpdateRequest(
 
         @Schema(description = "여행일지 제목", example = "보문 골목 산책")
         @Pattern(regexp = "(?s).*\\S.*", message = "제목은 공백만 입력할 수 없습니다.")
-        @Size(max = 20, message = "제목은 최대 20자까지 입력 가능합니다.") // 코스 이름이 최대 20자 -> 통일
+        @Size(max = 100, message = "제목은 최대 100자까지 입력 가능합니다.")
         String title,
 
         @Size(max = 1000, message = "여행 전체 후기는 최대 1000자까지 입력 가능합니다.")

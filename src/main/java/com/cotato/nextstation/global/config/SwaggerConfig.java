@@ -1,5 +1,8 @@
 package com.cotato.nextstation.global.config;
 
+import io.swagger.v3.oas.models.PathItem;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
 import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,7 +13,8 @@ import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.info.License;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
-import io.swagger.v3.oas.annotations.servers.Server;
+
+import java.util.Set;
 
 @OpenAPIDefinition(
         info = @Info(
@@ -18,11 +22,7 @@ import io.swagger.v3.oas.annotations.servers.Server;
                 version = "v1.0.0",
                 description = "NextStation Backend API Documentation",
                 license = @License(name = "Apache 2.0", url = "http://www.apache.org/licenses/LICENSE-2.0")
-        ),
-        servers = {
-                @Server(url = "http://localhost:8080", description = "Local Development"),
-                @Server(url = "https://3.37.77.188.nip.io", description = "Production Server"),
-        }
+        )
 )
 // signupTokenAuth: 회원가입 비밀번호 설정(/signup) 응답의 signupToken, 프로필 설정(/profile) API 전용
 @SecurityScheme(
@@ -50,6 +50,31 @@ import io.swagger.v3.oas.annotations.servers.Server;
 )
 @Configuration
 public class SwaggerConfig {
+
+    private static final Set<String> OPTIONAL_ACCESS_TOKEN_PATHS = Set.of(
+            "/api/v1/explore",
+            "/api/v1/explore/courses",
+            "/api/v1/explore/courses/popular",
+            "/api/v1/explore/concept-tours",
+            "/api/v1/explore/concept-tours/{conceptTourId}/courses",
+            "/api/v1/journals/{journalId}"
+    );
+
+    /**
+     * 선택적 인증 조회는 accessToken을 보낼 수도 있고 생략할 수도 있다.
+     * OpenAPI에서는 두 Security Requirement를 OR로 나열해야 이 계약이 정확히 표현된다.
+     */
+    @Bean
+    public GlobalOpenApiCustomizer optionalAccessTokenCustomizer() {
+        return openApi -> OPTIONAL_ACCESS_TOKEN_PATHS.stream()
+                .map(openApi.getPaths()::get)
+                .filter(pathItem -> pathItem != null && pathItem.getGet() != null)
+                .map(PathItem::getGet)
+                .forEach(operation -> operation.setSecurity(java.util.List.of(
+                        new SecurityRequirement().addList("accessTokenAuth"),
+                        new SecurityRequirement()
+                )));
+    }
 
 
     // Auth 관련 API (인증/인가)
@@ -149,6 +174,16 @@ public class SwaggerConfig {
                 .group("Recommendation")
                 .displayName("Recommendation API")
                 .packagesToScan("com.cotato.nextstation.domain.recommendation.controller")
+                .build();
+    }
+
+    // 관리자 전용 API
+    @Bean
+    public GroupedOpenApi adminApi() {
+        return GroupedOpenApi.builder()
+                .group("Admin")
+                .displayName("Admin API")
+                .pathsToMatch("/api/v1/admin/**")
                 .build();
     }
 

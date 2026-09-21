@@ -81,7 +81,7 @@ class MemberQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
         given(memberSocialAccountRepository.findFirstByMemberIdOrderByIdAsc(1L)).willReturn(Optional.empty());
         given(memberConverter.toAccountInfoResponse(member, null))
-                .willReturn(new AccountInfoResponse("LOCAL", "user@example.com"));
+                .willReturn(new AccountInfoResponse("LOCAL", "user@example.com", LocalDate.of(2000, 1, 1)));
 
         // when
         AccountInfoResponse response = memberQueryService.getMyAccountInfo(1L);
@@ -89,6 +89,7 @@ class MemberQueryServiceTest {
         // then
         assertThat(response.provider()).isEqualTo("LOCAL");
         assertThat(response.email()).isEqualTo("user@example.com");
+        assertThat(response.birthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
     }
 
     @Test
@@ -105,13 +106,14 @@ class MemberQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
         given(memberSocialAccountRepository.findFirstByMemberIdOrderByIdAsc(1L)).willReturn(Optional.of(socialAccount));
         given(memberConverter.toAccountInfoResponse(member, socialAccount))
-                .willReturn(new AccountInfoResponse("KAKAO", "user@example.com"));
+                .willReturn(new AccountInfoResponse("KAKAO", "user@example.com", LocalDate.of(2000, 1, 1)));
 
         // when
         AccountInfoResponse response = memberQueryService.getMyAccountInfo(1L);
 
         // then
         assertThat(response.provider()).isEqualTo("KAKAO");
+        assertThat(response.birthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
     }
 
     @Test
@@ -150,6 +152,20 @@ class MemberQueryServiceTest {
     void getMemberProfile_memberNotFound() {
         // given
         given(memberRepository.findById(1L)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> memberQueryService.getMemberProfile(1L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
+    }
+
+    @Test
+    @DisplayName("탈퇴한 회원의 프로필을 조회하면 존재하지 않는 회원과 동일하게 예외가 발생한다")
+    void getMemberProfile_withdrawnMember_treatedAsNotFound() {
+        // given: soft delete라 행은 남아 있지만, 탈퇴 사실 자체를 노출하지 않기 위해 404로 처리한다
+        Member withdrawnMember = activeMember();
+        withdrawnMember.withdraw();
+        given(memberRepository.findById(1L)).willReturn(Optional.of(withdrawnMember));
 
         // when & then
         assertThatThrownBy(() -> memberQueryService.getMemberProfile(1L))

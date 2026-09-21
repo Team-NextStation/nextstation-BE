@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum JournalErrorCode implements ErrorCode {
 
+    INVALID_JOURNAL_PHOTO(HttpStatus.BAD_REQUEST, "CLIENT_ERROR_400_INVALID_JOURNAL_PHOTO", "UPDATE 액션에는 이미지 URL이 필요합니다."),
+
     JOURNAL_FORBIDDEN(HttpStatus.FORBIDDEN, "CLIENT_ERROR_403_JOURNAL_FORBIDDEN", "본인 여행일지만 수정/삭제할 수 있습니다."),
     JOURNAL_NOT_FOUND(HttpStatus.NOT_FOUND, "CLIENT_ERROR_404_JOURNAL_NOT_FOUND", "존재하지 않는 여행일지입니다."),
     MEMBER_STAMP_NOT_FOUND(HttpStatus.NOT_FOUND, "CLIENT_ERROR_404_MEMBER_STAMP_NOT_FOUND", "존재하지 않는 스탬프입니다."),

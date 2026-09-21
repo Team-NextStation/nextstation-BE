@@ -4,11 +4,14 @@ import com.cotato.nextstation.domain.image.dto.response.PresignedUrlResponse;
 import com.cotato.nextstation.domain.image.enums.S3Folder;
 import com.cotato.nextstation.domain.image.exception.ImageErrorCode;
 import com.cotato.nextstation.domain.journal.entity.Journal;
+import com.cotato.nextstation.domain.member.service.query.AdminGuard;
+import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -26,8 +29,11 @@ public class ImageCommandService {
 
     private static final Duration PRESIGNED_URL_EXPIRATION = Duration.ofMinutes(10);
     private static final String ALLOWED_DELETE_PREFIX = "images/uploads/";
+    private static final String STATIC_PLACE_DELETE_PREFIX = S3Folder.STATIC_PLACE.getPath() + "/";
 
     private final JournalRepository journalRepository;
+    private final PlaceImageRepository placeImageRepository;
+    private final AdminGuard adminGuard;
     private final S3Presigner s3Presigner;
     private final S3Client s3Client;
     private final String bucketName;
@@ -36,22 +42,28 @@ public class ImageCommandService {
     public ImageCommandService(S3Presigner s3Presigner,
                                S3Client s3Client,
                                JournalRepository journalRepository,
+                               PlaceImageRepository placeImageRepository,
+                               AdminGuard adminGuard,
                                @Value("${aws.s3.bucket-name}") String bucketName,
                                 @Value("${spring.cloud.aws.region.static}") String region) {
         this.s3Presigner = s3Presigner;
         this.s3Client = s3Client;
         this.journalRepository = journalRepository;
+        this.placeImageRepository = placeImageRepository;
+        this.adminGuard = adminGuard;
         this.bucketName = bucketName;
         this.region = region;
     }
 
     // Presigned URL 생성
-    public PresignedUrlResponse getPresignedUrl(S3Folder folder, Long memberId, Long journalId, String fileName) {
+    public PresignedUrlResponse getPresignedUrl(S3Folder folder, Long memberId, Long journalId,
+                                               String kakaoPlaceId, String fileName) {
+        validatePlaceUploadPermission(folder, memberId);
         validateJournalOwnership(folder, memberId, journalId);
 
         String extension = getExtension(fileName);
         String contentType = mapContentType(extension);
-        String key = createS3Key(folder, memberId, journalId, extension);
+        String key = createS3Key(folder, memberId, journalId, kakaoPlaceId, extension);
 
         // 전체 URL 생성
         String imageUrl = "https://%s.s3.%s.amazonaws.com/%s".formatted(bucketName, region, key);
@@ -76,15 +88,15 @@ public class ImageCommandService {
 
     // 다중 Presigned URL 생성
     public List<PresignedUrlResponse> getPresignedUrls(
-            S3Folder folder, Long memberId, Long journalId, List<String> fileNames) {
-        if (folder != S3Folder.JOURNAL) {
+            S3Folder folder, Long memberId, Long journalId, String kakaoPlaceId, List<String> fileNames) {
+        if (folder != S3Folder.JOURNAL && folder != S3Folder.STATIC_PLACE) {
             throw new CustomException(ImageErrorCode.PROFILE_NOT_ALLOWED_IN_BATCH);
         }
 
         // journalId null이면 각 단일 발급에서 journalId 없는 경로로 처리됨
 
         return fileNames.stream()
-                .map(fileName -> getPresignedUrl(folder, memberId, journalId, fileName))
+                .map(fileName -> getPresignedUrl(folder, memberId, journalId, kakaoPlaceId, fileName))
                 .toList();
     }
 
@@ -92,13 +104,14 @@ public class ImageCommandService {
     public void deleteImage(String imageUrl, Long memberId) {
         String key = extractKeyFromImageUrl(imageUrl);
 
-        // 정적 장소 사진 등 uploads 외 경로 삭제 방지
-        if (!key.startsWith(ALLOWED_DELETE_PREFIX)) {
+        if (key.startsWith(STATIC_PLACE_DELETE_PREFIX)) {
+            validatePlaceImageDeletable(imageUrl, memberId);
+        } else if (key.startsWith(ALLOWED_DELETE_PREFIX)) {
+            validateOwnership(key, memberId);
+        } else {
             log.warn("삭제 불가 경로 요청: key={}", key);
             throw new CustomException(ImageErrorCode.UNSUPPORTED_UPLOAD_FOLDER);
         }
-
-        validateOwnership(key, memberId);
 
         DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
                 .bucket(bucketName)
@@ -106,6 +119,31 @@ public class ImageCommandService {
                 .build();
         s3Client.deleteObject(deleteRequest);
         log.info("S3 이미지 삭제 완료: key={}", key);
+    }
+
+    /**
+     * 장소 사진은 회원 소유 경로가 아니므로 소유권 대신 관리자 권한으로 판정한다.
+     * <p>
+     * 참조가 없는 경우는 업로드 후 저장하지 않고 취소한 사진이므로 바로 삭제한다.
+     */
+    private void validatePlaceImageDeletable(String imageUrl, Long memberId) {
+        requireMemberId(memberId);
+        adminGuard.requireAdmin(memberId);
+
+        if (placeImageRepository.existsByImageUrl(imageUrl)) {
+            log.warn("장소가 참조 중인 사진 삭제 시도: imageUrl={}, memberId={}", imageUrl, memberId);
+            throw new CustomException(ImageErrorCode.PLACE_IMAGE_IN_USE);
+        }
+        log.info("참조 없는 장소 사진 삭제 진행: imageUrl={}, memberId={}", imageUrl, memberId);
+    }
+
+    public void validatePlaceImageUrl(String imageUrl, String kakaoPlaceId) {
+        String key = extractKeyFromImageUrl(imageUrl);
+        String expectedPrefix = "%s/%s/".formatted(S3Folder.STATIC_PLACE.getPath(), kakaoPlaceId);
+        if (!key.startsWith(expectedPrefix)) {
+            log.warn("해당 장소의 사진 경로가 아닌 URL 요청: key={}, kakaoPlaceId={}", key, kakaoPlaceId);
+            throw new CustomException(ImageErrorCode.INVALID_IMAGE_URL_FORMAT);
+        }
     }
 
     private String extractKeyFromImageUrl(String imageUrl) {
@@ -129,9 +167,10 @@ public class ImageCommandService {
     /** S3 객체 키 생성
      * PROFILE: images/uploads/profile/{memberId}/{uuid}.{ext}
      * JOURNAL: images/uploads/journal/{memberId}/{journalId}/{uuid}.{ext}
-     * STATIC_PLACE: presigned URL 발급 대상이 아님
+     * STATIC_PLACE: images/static/places/{kakaoPlaceId}/{uuid}.{ext}
      */
-    private String createS3Key(S3Folder folder, Long memberId, Long journalId, String extension) {
+    private String createS3Key(S3Folder folder, Long memberId, Long journalId,
+                               String kakaoPlaceId, String extension) {
 
         String uuid = UUID.randomUUID().toString();
 
@@ -148,8 +187,12 @@ public class ImageCommandService {
                         // journalId 없으면: images/uploads/journal/{memberId}/{uuid}.ext
             }
             case STATIC_PLACE -> {
-                log.warn("presigned URL 발급 대상이 아닌 폴더 요청: folder={}", folder);
-                throw new CustomException(ImageErrorCode.UNSUPPORTED_UPLOAD_FOLDER);
+                // 키가 카카오 place id 기준이라 장소가 저장되기 전에도 만들 수 있다. 값은 검색 단계에서 확보된다.
+                if (!StringUtils.hasText(kakaoPlaceId)) {
+                    log.warn("kakaoPlaceId 없이 장소 사진 presigned URL 요청");
+                    throw new CustomException(ImageErrorCode.MISSING_KAKAO_PLACE_ID);
+                }
+                yield "%s/%s/%s.%s".formatted(folder.getPath(), kakaoPlaceId, uuid, extension);
             }
         };
     }
@@ -180,6 +223,14 @@ public class ImageCommandService {
                 throw new CustomException(ImageErrorCode.UNSUPPORTED_FILE_EXTENSION);
             }
         };
+    }
+
+    private void validatePlaceUploadPermission(S3Folder folder, Long memberId) {
+        if (folder != S3Folder.STATIC_PLACE) {
+            return;
+        }
+        requireMemberId(memberId);
+        adminGuard.requireAdmin(memberId);
     }
 
     // JOURNAL 폴더 요청일 때만 journalId 소유권을 검증한다.

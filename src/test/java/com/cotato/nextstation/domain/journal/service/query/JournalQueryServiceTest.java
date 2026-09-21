@@ -20,9 +20,13 @@ import com.cotato.nextstation.domain.journal.repository.JournalRepository.Course
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJournalCardView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
 import com.cotato.nextstation.domain.member.entity.Member;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
+import com.cotato.nextstation.domain.place.entity.PlaceReview;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository.ReviewPlaceView;
 import com.cotato.nextstation.domain.place.service.query.PlaceInfoQueryService;
 import com.cotato.nextstation.domain.stamp.entity.MemberStamp;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
@@ -54,6 +58,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -145,8 +150,10 @@ class JournalQueryServiceTest {
                 .willReturn(new LineSummaryResponse(1L, "우이신설선", null));
         given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(COURSE_ID))
                 .willReturn(List.of(CoursePlace.builder().courseId(COURSE_ID).placeId(PLACE_ID).orderNum(1).build()));
-        given(placeInfoQueryService.getPlaceInfos(anyList())).willReturn(List.of(
-                new PlaceInfoResponse(PLACE_ID, "보문숲길도서관", "설명", "CULTURE", "문화공간", null, 127.123, 37.456)));
+        given(placeInfoQueryService.getHistoricalPlaceInfos(anyList())).willReturn(List.of(
+                new HistoricalPlaceInfoResponse(
+                        PLACE_ID, "보문숲길도서관", "설명", "CULTURE", "문화공간", null,
+                        127.123, 37.456, PlaceStatus.APPROVED)));
         given(placeInfoQueryService.getTopTagNames(anyList())).willReturn(List.of());
         given(journalImageRepository.findByJournalIdOrderByIdAsc(JOURNAL_ID)).willReturn(List.of());
         given(placeReviewRepository.findByJournalId(JOURNAL_ID)).willReturn(List.of());
@@ -169,7 +176,32 @@ class JournalQueryServiceTest {
             assertThat(response.places()).hasSize(1);
             assertThat(response.places().get(0).placeId()).isEqualTo(PLACE_ID);
             assertThat(response.places().get(0).placeName()).isEqualTo("보문숲길도서관");
+            assertThat(response.places().get(0).placeStatus()).isEqualTo(PlaceStatus.APPROVED);
             assertThat(response.places().get(0).orderNum()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("반려된 장소도 코스 순서와 상태를 유지해 작성 초기 정보를 반환한다")
+        void rejectedPlace_returnsStatusInCourseOrder() {
+            // given: historical 조회 결과는 DB 반환 순서와 무관하므로 코스 순서로 다시 조립해야 한다.
+            long approvedPlaceId = 13L;
+            given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(COURSE_ID)).willReturn(List.of(
+                    CoursePlace.builder().courseId(COURSE_ID).placeId(PLACE_ID).orderNum(1).build(),
+                    CoursePlace.builder().courseId(COURSE_ID).placeId(approvedPlaceId).orderNum(2).build()));
+            given(placeInfoQueryService.getHistoricalPlaceInfos(anyList())).willReturn(List.of(
+                    historicalPlaceInfo(approvedPlaceId, "승인 장소", PlaceStatus.APPROVED),
+                    historicalPlaceInfo(PLACE_ID, "반려 장소", PlaceStatus.REJECTED)));
+
+            // when
+            JournalWriteInfoResponse response = journalQueryService.getWriteInfo(OWNER_ID, MEMBER_STAMP_ID);
+
+            // then
+            assertThat(response.places())
+                    .extracting(JournalWriteInfoResponse.PlaceSimpleResponse::placeId,
+                            JournalWriteInfoResponse.PlaceSimpleResponse::orderNum,
+                            JournalWriteInfoResponse.PlaceSimpleResponse::placeStatus)
+                    .containsExactly(tuple(PLACE_ID, 1, PlaceStatus.REJECTED),
+                            tuple(approvedPlaceId, 2, PlaceStatus.APPROVED));
         }
 
         @Test
@@ -251,7 +283,67 @@ class JournalQueryServiceTest {
             assertThat(response.visitedPlaces()).hasSize(1);
             assertThat(response.visitedPlaces().get(0).xCoordinate()).isEqualTo(127.123);
             assertThat(response.visitedPlaces().get(0).yCoordinate()).isEqualTo(37.456);
+            assertThat(response.visitedPlaces().get(0).placeStatus()).isEqualTo(PlaceStatus.APPROVED);
             verify(courseCommandService).increaseViewCount(COURSE_ID, OTHER_MEMBER_ID);
+        }
+
+        @Test
+        @DisplayName("삭제된 장소와 연결된 리뷰도 장소 상태·리뷰를 유지해 여행일지 상세를 반환한다")
+        void deletedPlaceWithReview_returnsStatusWithoutDereferencingPlaceEntity() {
+            // given: Place 엔티티의 APPROVED 제한 때문에 review.getPlace()는 사용하면 안 된다.
+            PlaceReview review = mock(PlaceReview.class);
+            given(review.getId()).willReturn(501L);
+            given(review.getReview()).willReturn("다시 가고 싶은 곳이에요");
+            ReviewPlaceView reviewPlace = mock(ReviewPlaceView.class);
+            given(reviewPlace.getReviewId()).willReturn(501L);
+            given(reviewPlace.getPlaceId()).willReturn(PLACE_ID);
+            given(placeReviewRepository.findByJournalId(JOURNAL_ID)).willReturn(List.of(review));
+            given(placeReviewRepository.findReviewPlaceIdsByJournalId(JOURNAL_ID)).willReturn(List.of(reviewPlace));
+            given(placeInfoQueryService.getHistoricalPlaceInfos(anyList())).willReturn(List.of(
+                    new HistoricalPlaceInfoResponse(
+                            PLACE_ID, "보문숲길도서관", "설명", "CULTURE", "문화공간", null,
+                            127.123, 37.456, PlaceStatus.DELETED)));
+            given(courseQueryService.isLikedByMember(COURSE_ID, OWNER_ID)).willReturn(false);
+
+            // when
+            JournalDetailResponse response = journalQueryService.getJournalDetail(OWNER_ID, JOURNAL_ID);
+
+            // then
+            assertThat(response.visitedPlaces().get(0).placeStatus()).isEqualTo(PlaceStatus.DELETED);
+            assertThat(response.visitedPlaces().get(0).review()).isEqualTo("다시 가고 싶은 곳이에요");
+        }
+
+        @Test
+        @DisplayName("반려된 장소와 연결된 리뷰도 장소 순서·상태·리뷰를 유지해 여행일지 상세를 반환한다")
+        void rejectedPlaceWithReview_preservesOrderStatusAndReview() {
+            // given
+            long approvedPlaceId = 13L;
+            PlaceReview rejectedReview = mock(PlaceReview.class);
+            given(rejectedReview.getId()).willReturn(501L);
+            given(rejectedReview.getReview()).willReturn("반려된 장소의 기록");
+            ReviewPlaceView reviewPlace = mock(ReviewPlaceView.class);
+            given(reviewPlace.getReviewId()).willReturn(501L);
+            given(reviewPlace.getPlaceId()).willReturn(PLACE_ID);
+            given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(COURSE_ID)).willReturn(List.of(
+                    CoursePlace.builder().courseId(COURSE_ID).placeId(PLACE_ID).orderNum(1).build(),
+                    CoursePlace.builder().courseId(COURSE_ID).placeId(approvedPlaceId).orderNum(2).build()));
+            given(placeInfoQueryService.getHistoricalPlaceInfos(anyList())).willReturn(List.of(
+                    historicalPlaceInfo(approvedPlaceId, "승인 장소", PlaceStatus.APPROVED),
+                    historicalPlaceInfo(PLACE_ID, "반려 장소", PlaceStatus.REJECTED)));
+            given(placeReviewRepository.findByJournalId(JOURNAL_ID)).willReturn(List.of(rejectedReview));
+            given(placeReviewRepository.findReviewPlaceIdsByJournalId(JOURNAL_ID)).willReturn(List.of(reviewPlace));
+            given(courseQueryService.isLikedByMember(COURSE_ID, OWNER_ID)).willReturn(false);
+
+            // when
+            JournalDetailResponse response = journalQueryService.getJournalDetail(OWNER_ID, JOURNAL_ID);
+
+            // then
+            assertThat(response.visitedPlaces())
+                    .extracting(JournalDetailResponse.VisitedPlaceResponse::placeId,
+                            JournalDetailResponse.VisitedPlaceResponse::placeStatus,
+                            JournalDetailResponse.VisitedPlaceResponse::review)
+                    .containsExactly(tuple(PLACE_ID, PlaceStatus.REJECTED, "반려된 장소의 기록"),
+                            tuple(approvedPlaceId, PlaceStatus.APPROVED, null));
         }
 
         @Test
@@ -316,15 +408,18 @@ class JournalQueryServiceTest {
             given(courseQueryService.isLikedByMember(COURSE_ID, null)).willReturn(false);
 
             // when
-            journalQueryService.getJournalDetail(null, JOURNAL_ID);
+            JournalDetailResponse response = journalQueryService.getJournalDetail(null, JOURNAL_ID);
 
             // then
+            assertThat(response.writerId()).isEqualTo(OWNER_ID);
+            assertThat(response.isMine()).isFalse();
+            assertThat(response.isLiked()).isFalse();
             verify(courseCommandService).increaseViewCount(COURSE_ID, null);
         }
 
         @Test
-        @DisplayName("타인이 비공개 일지를 조회하면 JOURNAL_FORBIDDEN 예외를 던지고 조회수 증가 호출은 나가지 않는다")
-        void otherMemberViewsPrivateJournal_throwsForbiddenAndNeverIncreasesViewCount() {
+        @DisplayName("타인이 비공개 일지를 조회하면 JOURNAL_NOT_FOUND를 던지고 조회수는 증가하지 않는다")
+        void otherMemberViewsPrivateJournal_throwsNotFoundAndNeverIncreasesViewCount() {
             // given: setUp의 journal은 공개 상태라, 이 테스트만 비공개로 재정의한다
             Journal privateJournal = Journal.builder()
                     .member(journal.getMember())
@@ -339,9 +434,58 @@ class JournalQueryServiceTest {
 
             // when & then: 권한 검증에서 막혀야 하고, 그 뒤에 있는 조회수 증가 호출까지 가면 안 된다
             assertThatThrownBy(() -> journalQueryService.getJournalDetail(OTHER_MEMBER_ID, JOURNAL_ID))
-                    .isInstanceOf(CustomException.class);
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
 
             verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("비로그인이 비공개 일지를 조회해도 JOURNAL_NOT_FOUND를 던진다")
+        void anonymousViewsPrivateJournal_throwsNotFound() {
+            Journal privateJournal = Journal.builder()
+                    .member(journal.getMember())
+                    .memberStampId(MEMBER_STAMP_ID)
+                    .title("보문 골목 산책")
+                    .traveledAt(LocalDate.of(2026, 7, 8))
+                    .travelDuration(TravelDuration.HALF_DAY)
+                    .isPublic(false)
+                    .build();
+            ReflectionTestUtils.setField(privateJournal, "id", JOURNAL_ID);
+            given(journalRepository.findById(JOURNAL_ID)).willReturn(Optional.of(privateJournal));
+
+            assertThatThrownBy(() -> journalQueryService.getJournalDetail(null, JOURNAL_ID))
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
+
+            verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("타인이 탈퇴한 작성자의 공개 일지를 조회하면 JOURNAL_NOT_FOUND를 던진다")
+        void otherMemberViewsWithdrawnAuthorJournal_throwsNotFoundAndNeverIncreasesViewCount() {
+            // given: 탈퇴는 soft delete라 journal 행과 작성자(member) 행은 남아 있지만, 재가입 시
+            // 과거 콘텐츠가 다시 노출되지 않도록 타인 조회는 막는다. isPublic 여부와 무관하게 막혀야 한다.
+            given(journal.getMember().getStatus()).willReturn(MemberStatus.WITHDRAWN);
+
+            // when & then
+            assertThatThrownBy(() -> journalQueryService.getJournalDetail(OTHER_MEMBER_ID, JOURNAL_ID))
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
+
+            verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("본인은 자신이 탈퇴 처리된 상태여도(예: 탈퇴 유예 기간 중 재로그인) 자기 일지를 그대로 조회할 수 있다")
+        void ownerViewsOwnJournal_evenIfWithdrawn() {
+            // given
+            given(journal.getMember().getStatus()).willReturn(MemberStatus.WITHDRAWN);
+            given(courseQueryService.isLikedByMember(COURSE_ID, OWNER_ID)).willReturn(false);
+
+            // when & then: 본인 조회는 status를 보지 않으므로 예외 없이 성공해야 한다
+            assertThatCode(() -> journalQueryService.getJournalDetail(OWNER_ID, JOURNAL_ID))
+                    .doesNotThrowAnyException();
         }
 
         @Test
@@ -367,6 +511,11 @@ class JournalQueryServiceTest {
             assertThat(response.isMine()).isTrue();
             assertThat(response.isPublic()).isFalse();
         }
+    }
+
+    private HistoricalPlaceInfoResponse historicalPlaceInfo(Long placeId, String placeName, PlaceStatus status) {
+        return new HistoricalPlaceInfoResponse(
+                placeId, placeName, "설명", "CULTURE", "문화공간", null, 127.123, 37.456, status);
     }
 
     @Nested

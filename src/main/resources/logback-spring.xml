@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- 스프링 부트 기본 설정 (패턴, 컬러, 로거 별칭) -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!-- 공통: 콘솔 출력 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- 운영 환경 전용: ERROR 로그 디스코드 전송 -->
+    <springProfile name="prod">
+
+        <!-- 웹훅 URL은 application-prod.yml에서 주입 -->
+        <springProperty name="DISCORD_ERROR_WEBHOOK_URL" source="logging.discord-error.webhook-url"/>
+
+        <!-- 디스코드 전송 Appender -->
+        <appender name="DISCORD" class="com.github.napstr.logback.DiscordAppender">
+            <webhookUri>${DISCORD_ERROR_WEBHOOK_URL}</webhookUri>
+            <username>🚨 NextStation 서버 에러 알림</username>
+            <tts>false</tts>
+            <layout class="ch.qos.logback.classic.PatternLayout">
+                <!-- 디스코드 2000자 제한: 메시지 1000자 컷 + 스택트레이스 첫 줄만 -->
+                <pattern>**[%d{yyyy-MM-dd HH:mm:ss}] %-5level** `%logger{40}.%M:%L`%n```%n%.-1000msg%n%ex{short}%n```</pattern>
+            </layout>
+        </appender>
+
+        <!-- 비동기 래핑: 웹훅 전송이 요청 스레드를 막지 않도록 -->
+        <appender name="ASYNC_DISCORD" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="DISCORD"/>
+
+            <!--
+                큐(기본 256) 포화 시 대기하지 않고 이벤트를 버린다.
+                ERROR는 discardingThreshold 대상이 아니라 neverBlock 없이는 요청 스레드가 블로킹된다.
+                알림 유실보다 응답 지연이 치명적이므로 유실을 택한다. 원본 로그는 콘솔에 남는다.
+            -->
+            <neverBlock>true</neverBlock>
+
+            <!-- ERROR만 전송 (4xx 비즈니스 예외는 WARN이라 제외) -->
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>ERROR</level>
+            </filter>
+
+            <!-- 비동기 전환 시 유실되는 호출 위치(클래스·메서드·라인) 수집 -->
+            <includeCallerData>true</includeCallerData>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="ASYNC_DISCORD"/>
+        </root>
+    </springProfile>
+
+</configuration>

@@ -47,7 +47,7 @@ public class ImageController {
                         - Content-Type 헤더에 응답의 contentType을 그대로 실어야 한다.
                     - presignedUrl은 10분 후 만료된다.
                     - 업로드 완료 후, 응답의 imageUrl을 프로필 설정 API 등 이미지 URL이 필요한 다음 요청에 그대로 실어 보내면 된다.
-                    - folder는 도메인에 맞추어서 요청한다. (PROFILE: 프로필 이미지, JOURNAL: 여행일지 이미지 및 장소 리뷰 사진)
+                    - folder는 도메인에 맞추어서 요청한다. (PROFILE: 프로필 이미지, JOURNAL: 여행일지 이미지 및 장소 리뷰 사진, STATIC_PLACE: 장소 사진, 관리자 전용)
                        - 아래 Request body의 Schema 설명 참고
                     - folder가 PROFILE인 경우, 회원가입 프로필 설정 단계라서 accessToken이 없을 수 있어 signupToken도 허용한다.
                     """
@@ -67,7 +67,7 @@ public class ImageController {
     ) {
         Long memberId = resolveMemberId(authorizationHeader, request.folder());
         return CommonResponse.success(imageCommandService.getPresignedUrl(
-                request.folder(), memberId, request.journalId(), request.fileName()));
+                request.folder(), memberId, request.journalId(), request.kakaoPlaceId(), request.fileName()));
     }
 
     // 단일 발급 엔드포인트 전용 인증 처리
@@ -116,7 +116,7 @@ public class ImageController {
                 - presignedUrl은 10분 후 만료된다.
                 - 업로드 완료 후, 응답의 imageUrl 목록을 여행일지 작성 API 등
                   이미지 URL이 필요한 다음 요청에 그대로 실어 보내면 된다.
-                - folder는 도메인에 맞추어서 요청한다. (JOURNAL: 여행일지 대표 사진 및 장소 리뷰 사진)
+                - folder는 도메인에 맞추어서 요청한다. (JOURNAL: 여행일지 대표 사진 및 장소 리뷰 사진, STATIC_PLACE: 장소 사진, 관리자 전용)
                     - PROFILE은 단일 업로드 API(/presigned-url)를 사용할 것
                 - fileNames(최대 15개) 순서대로 응답이 반환되므로, 순서가 보장된다.
                 """
@@ -133,7 +133,7 @@ public class ImageController {
             @Valid @RequestBody PresignedUrlsRequest request
     ) {
         return CommonResponse.success(imageCommandService.getPresignedUrls(
-                request.folder(), principal.memberId(), request.journalId(), request.fileNames()));
+                request.folder(), principal.memberId(), request.journalId(), request.kakaoPlaceId(), request.fileNames()));
     }
 
 
@@ -144,13 +144,16 @@ public class ImageController {
                     - 프로필 이미지 교체, 여행일지 삭제 등 기존 이미지가 더 이상 필요 없을 때 사용한다.
                     - 이미지 교체 시 흐름:  새 presigned URL 발급 → S3 업로드 → 도메인 URL 갱신 → 이 API로 기존 이미지 삭제
                     - 로그인한 본인의 이미지만 삭제할 수 있다.
+                    - 장소 사진(`images/static/places/**`)은 소유자가 없으므로 관리자만 삭제할 수 있다.
+                    - 장소에 등록된 사진은 먼저 장소 수정 API의 `deleteImageIds`로 연결을 끊은 뒤 삭제한다. 연결이 남아 있으면 409가 발생한다.
                     """
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "삭제 성공"),
             @ApiResponse(responseCode = "400", description = "요청 값 검증 실패"),
             @ApiResponse(responseCode = "401", description = "인증 실패 (`GlobalErrorCode.EXPIRED_TOKEN`/`INVALID_TOKEN`/`UNAUTHORIZED`)"),
-            @ApiResponse(responseCode = "403", description = "본인 이미지가 아님"),
+            @ApiResponse(responseCode = "403", description = "본인 이미지가 아니거나 관리자가 아님"),
+            @ApiResponse(responseCode = "409", description = "장소가 사용 중인 사진 (`ImageErrorCode.PLACE_IMAGE_IN_USE`)"),
     })
     @SecurityRequirement(name = "accessTokenAuth")
     @DeleteMapping

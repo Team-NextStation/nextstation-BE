@@ -62,4 +62,8 @@ public class PlaceImage extends BaseTimeEntity {
         this.sourceType = sourceType;
         this.source = source;
     }
+
+    public void updateSortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
+    }
 }

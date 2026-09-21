@@ -5,6 +5,7 @@ import com.cotato.nextstation.domain.course.dto.request.CourseCreateRequest;
 import com.cotato.nextstation.domain.course.dto.request.CourseUpdateRequest;
 import com.cotato.nextstation.domain.course.dto.response.CourseCopyPreviewResponse;
 import com.cotato.nextstation.domain.course.dto.response.CourseCreateResponse;
+import com.cotato.nextstation.domain.course.dto.response.CourseShareResponse;
 import com.cotato.nextstation.domain.course.dto.response.CourseUpdateResponse;
 import com.cotato.nextstation.domain.course.service.command.CourseCommandService;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
@@ -48,7 +49,7 @@ public class CourseController {
             description = """
                     선택한 장소들로 코스를 생성한다.
                     - 장소는 카테고리 무관 3개 이상 10개 이하, 같은 장소 중복 선택 불가
-                    - 코스 이름은 최대 20자
+                    - 코스 이름은 최대 100자
                     - placeIds 순서대로 order_num이 부여된다
                     - journalId는 여행일지 작성 시, conceptTourId는 관리자 큐레이션으로 추후 채워진다
                     - stationId는 뽑기 대상 역(`is_drawable=true`)만 허용된다
@@ -134,11 +135,36 @@ public class CourseController {
     }
 
     @Operation(
+            summary = "공유 링크로 코스 확인",
+            description = """
+                    OS 공유 시트로 전달된 링크를 열었을 때의 코스 확인 화면(지도 + 코스 순서)이다.
+                    - 인증이 필요 없다. 소유자인지도 따지지 않는다.
+                    - courseId가 아닌 shareToken으로 조회한다. 코스 생성 응답(`CourseCreateResponse.shareToken`)과
+                      내가 만든 코스 확인 응답(`MyCourseDetailResponse.shareToken`)에서 얻은 값을 그대로 쓴다.
+                      courseId는 순차 숫자라 그대로 노출하면 다른 사람의 코스를 ID만 바꿔가며 열람할 수 있어
+                      막았다.
+                    - 여행일지·공개 여부와 무관하게 조회된다. 여행 전(일지 없음) 코스도 공유할 수 있어야 하기 때문이다.
+                    - 응답에 회원 식별 정보(작성자, 조회수, 좋아요 수)는 없다.
+                    - 삭제된 코스는 조회되지 않는다.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "404", description = "존재하지 않는 코스 (`CourseErrorCode.COURSE_NOT_FOUND`)"),
+    })
+    @GetMapping("/share/{shareToken}")
+    public CommonResponse<CourseShareResponse> getCourseShareDetail(
+            @Parameter(description = "공유 링크 토큰", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable String shareToken) {
+        return CommonResponse.success(courseQueryService.getCourseShareDetail(shareToken));
+    }
+
+    @Operation(
             summary = "코스 수정",
             description = """
                     본인이 만든 코스의 이름·장소 순서를 수정한다. name/placeIds는 각각 선택 사항이며,
                     요청에 있는 필드만 반영한다(둘 다 생략하면 400).
-                    - name: 최대 20자, 공백 불가
+                    - name: 최대 100자, 공백 불가
                     - placeIds: 코스의 기존 장소 구성과 정확히 일치해야 한다(개수·구성 모두). 배열 순서대로 order_num이 재할당된다.
                     - 한 트랜잭션으로 처리되어, 장소 순서 검증에 실패하면 이름 변경도 함께 롤백된다.
                     """
@@ -147,7 +173,7 @@ public class CourseController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "수정 성공"),
             @ApiResponse(responseCode = "400", description = """
-                    이름·장소 순서 모두 생략, 이름이 공백이거나 20자 초과, 장소가 3개 미만/10개 초과
+                    이름·장소 순서 모두 생략, 이름이 공백이거나 100자 초과, 장소가 3개 미만/10개 초과
                     (`GlobalErrorCode.VALIDATION_ERROR`), 장소 목록이 기존 코스 구성과 불일치
                     (`CourseErrorCode.INVALID_COURSE_PLACES`) 또는 같은 장소 중복 (`CourseErrorCode.DUPLICATE_COURSE_PLACES`)"""),
             @ApiResponse(responseCode = "401", description = "accessToken 누락, 위변조, 또는 만료 (`GlobalErrorCode.UNAUTHORIZED`, `GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),

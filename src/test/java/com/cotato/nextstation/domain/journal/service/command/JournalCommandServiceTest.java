@@ -140,7 +140,8 @@ class JournalCommandServiceTest {
             // then
             verify(journalRepository).save(any(Journal.class));
             verify(journalImageRepository, times(2)).save(any(JournalImage.class));
-            verify(placeReviewCommandService).createPlaceReviews(any(Journal.class), argThat(reviews -> reviews.size() == 1));
+            verify(placeReviewCommandService)
+                    .createPlaceReviews(any(Journal.class), eq(COURSE_ID), argThat(reviews -> reviews.size() == 1));
             // 연결하지 않으면 공개로 써도 둘러보기·검색·좋아요·복제에서 공개 코스로 잡히지 않는다
             verify(courseCommandService).linkJournal(COURSE_ID, JOURNAL_ID);
         }
@@ -159,7 +160,7 @@ class JournalCommandServiceTest {
                     .isInstanceOf(CustomException.class);
 
             verify(journalRepository, never()).save(any());
-            verify(placeReviewCommandService, never()).createPlaceReviews(any(), any());
+            verify(placeReviewCommandService, never()).createPlaceReviews(any(), any(), any());
             // 일지가 만들어지지 않았으므로 코스에도 연결되면 안 된다
             verify(courseCommandService, never()).linkJournal(any(), any());
         }
@@ -197,7 +198,7 @@ class JournalCommandServiceTest {
             // then
             verify(journalImageRepository, never()).save(any());
             // placeReviews가 null이면 빈 리스트로 변환되어 호출된다
-            verify(placeReviewCommandService).createPlaceReviews(any(Journal.class), eq(List.of()));
+            verify(placeReviewCommandService).createPlaceReviews(any(Journal.class), eq(COURSE_ID), eq(List.of()));
         }
     }
 

@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.journal.dto.response;
 
 import com.cotato.nextstation.domain.journal.enums.TravelDuration;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -57,8 +58,8 @@ public record JournalDetailResponse(
         @Schema(description = "저장 수")
         int likeCount,
 
-        @Schema(description = "여행 사진 URL 목록 (첫 번째가 대표 사진)")
-        List<String> imageUrls,
+        @Schema(description = "여행 사진 목록 (첫 번째가 대표 사진). PATCH 수정 시 journalPhotos[].photoId로 이 photoId를 그대로 넘긴다")
+        List<JournalPhotoResponse> photos,
 
         @Schema(description = "전체 후기")
         String overallReview,
@@ -66,6 +67,13 @@ public record JournalDetailResponse(
         @Schema(description = "방문 장소 목록")
         List<VisitedPlaceResponse> visitedPlaces
 ) {
+    @Schema(description = "여행 사진 응답")
+    public record JournalPhotoResponse(
+            @Schema(description = "사진 ID. 수정 시 KEEP/DELETE 대상을 특정하는 데 쓴다")
+            Long photoId,
+            String imageUrl
+    ) {}
+
     @Schema(description = "방문 장소 응답")
     public record VisitedPlaceResponse(
             int orderNum,
@@ -77,6 +85,9 @@ public record JournalDetailResponse(
 
             @Schema(description = "y좌표", example = "37.456")
             Double yCoordinate,
+
+            @Schema(description = "현재 장소 상태. 비승인 상태면 상세 이동과 지도 핀을 제한하는 데 사용한다", example = "APPROVED")
+            PlaceStatus placeStatus,
 
             String review,
             String imageUrl

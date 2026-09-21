@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -35,8 +36,13 @@ public class Course extends BaseTimeEntity {
     @Column(name = "concept_tour_id")
     private Long conceptTourId;
 
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 100)
     private String name;
+
+    // 공유 링크 전용 식별자. courseId(순차 숫자)를 그대로 노출하면 다른 사람의 코스를
+    // ID만 바꿔가며 열람할 수 있어, 추측 불가능한 별도 값을 발급해 링크에 쓴다.
+    @Column(name = "share_token", nullable = false, unique = true, length = 36)
+    private String shareToken;
 
     @Column(name = "view_count", nullable = false)
     private int viewCount;
@@ -57,6 +63,7 @@ public class Course extends BaseTimeEntity {
         this.name = name;
         // 원본 없이 새로 만든 코스는 null이고, "내 코스로 만들기"로 복제한 코스만 원본을 가리킨다.
         this.originalCourseId = originalCourseId;
+        this.shareToken = UUID.randomUUID().toString();
         this.viewCount = 0;
         this.likeCount = 0;
         this.isDeleted = false;

@@ -38,3 +38,7 @@ logging:
 
 server:
   port: 8080
+  # nginx가 https를 받아 앱에는 http로 넘기므로, 앱이 스스로를 http로 인식한다.
+  # X-Forwarded-Proto를 반영해야 자기 주소를 https로 만든다.
+  # Swagger UI가 서버 주소를 자동으로 채울 때 이 값을 쓴다.
+  forward-headers-strategy: framework
