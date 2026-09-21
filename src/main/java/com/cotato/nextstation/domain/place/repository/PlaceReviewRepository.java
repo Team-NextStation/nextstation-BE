@@ -143,6 +143,10 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
 
     Optional<PlaceReview> findByJournalIdAndPlaceId(Long journalId, Long placeId);
 
+    // 신고 대상 확인용, 리뷰 작성자는 리뷰가 속한 여행일지의 작성자다.
+    @Query("SELECT pr.journal.member.id FROM PlaceReview pr WHERE pr.id = :reviewId")
+    Optional<Long> findAuthorIdById(@Param("reviewId") Long reviewId);
+
     interface ReviewPlaceView {
         Long getReviewId();
         Long getPlaceId();

@@ -18,6 +18,10 @@ public interface JournalRepository extends JpaRepository<Journal, Long> {
     boolean existsByIdAndMember_Id(Long journalId, Long memberId);
     boolean existsByMemberStampId(Long memberStampId);
 
+    // 신고 대상 확인용, @SQLRestriction으로 삭제된 일지는 제외되므로 결과가 비면 신고할 수 없는 대상이다.
+    @Query("SELECT j.member.id FROM Journal j WHERE j.id = :journalId")
+    Optional<Long> findAuthorIdById(@Param("journalId") Long journalId);
+
     // 이미 여행일지가 작성된 memberStampId 목록 조회
     @Query("SELECT j.memberStampId FROM Journal j WHERE j.member.id = :memberId")
     Set<Long> findCompletedMemberStampIdsByMemberId(@Param("memberId") Long memberId);

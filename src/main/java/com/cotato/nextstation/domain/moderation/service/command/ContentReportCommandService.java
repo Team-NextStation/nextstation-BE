@@ -1,16 +1,21 @@
 package com.cotato.nextstation.domain.moderation.service.command;
 
+import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.moderation.dto.request.ContentReportRequest;
 import com.cotato.nextstation.domain.moderation.dto.response.ContentReportResponse;
 import com.cotato.nextstation.domain.moderation.entity.ContentReport;
+import com.cotato.nextstation.domain.moderation.enums.ReportTargetType;
 import com.cotato.nextstation.domain.moderation.exception.ReportErrorCode;
 import com.cotato.nextstation.domain.moderation.repository.ContentReportRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -19,15 +24,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class ContentReportCommandService {
 
     private final ContentReportRepository contentReportRepository;
+    private final JournalRepository journalRepository;
+    private final PlaceReviewRepository placeReviewRepository;
 
     public ContentReportResponse report(Long reporterId, ContentReportRequest request) {
+        ReportTargetType targetType = request.targetType();
+        Long targetId = request.targetId();
         log.info("콘텐츠 신고 접수 요청: reporterId={}, targetType={}, targetId={}, reason={}",
-                reporterId, request.targetType(), request.targetId(), request.reason());
+                reporterId, targetType, targetId, request.reason());
+
+        Long authorId = findAuthorId(targetType, targetId);
+        if (authorId.equals(reporterId)) {
+            log.warn("본인 콘텐츠 신고 차단: reporterId={}, targetType={}, targetId={}",
+                    reporterId, targetType, targetId);
+            throw new CustomException(ReportErrorCode.SELF_REPORT_NOT_ALLOWED);
+        }
 
         ContentReport report = ContentReport.builder()
                 .reporterId(reporterId)
-                .targetType(request.targetType())
-                .targetId(request.targetId())
+                .targetType(targetType)
+                .targetId(targetId)
                 .reason(request.reason())
                 .detail(request.detail())
                 .build();
@@ -37,11 +53,29 @@ public class ContentReportCommandService {
         } catch (DataIntegrityViolationException e) {
             // UNIQUE(reporter_id, target_type, target_id) 위반. 같은 대상을 다시 신고한 경우다.
             log.warn("중복 신고 차단: reporterId={}, targetType={}, targetId={}",
-                    reporterId, request.targetType(), request.targetId());
+                    reporterId, targetType, targetId);
             throw new CustomException(ReportErrorCode.REPORT_ALREADY_EXISTS);
         }
 
         log.info("콘텐츠 신고 접수 완료: reportId={}, reporterId={}", report.getId(), reporterId);
         return new ContentReportResponse(report.getId());
+    }
+
+    /**
+     * 신고 대상의 작성자 id를 조회한다. 대상이 없거나 삭제된 경우 신고할 수 없다.
+     * <p>
+     * 두 대상 모두 엔티티에 {@code @SQLRestriction(is_deleted = false)}이 걸려 있어
+     * 삭제된 행은 조회 단계에서 빠진다.
+     */
+    private Long findAuthorId(ReportTargetType targetType, Long targetId) {
+        Optional<Long> authorId = switch (targetType) {
+            case JOURNAL -> journalRepository.findAuthorIdById(targetId);
+            case PLACE_REVIEW -> placeReviewRepository.findAuthorIdById(targetId);
+        };
+
+        return authorId.orElseThrow(() -> {
+            log.warn("존재하지 않는 신고 대상: targetType={}, targetId={}", targetType, targetId);
+            return new CustomException(ReportErrorCode.REPORT_TARGET_NOT_FOUND);
+        });
     }
 }
