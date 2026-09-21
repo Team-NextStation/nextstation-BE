@@ -13,6 +13,8 @@ import com.cotato.nextstation.domain.place.repository.PlaceRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
+import com.cotato.nextstation.global.util.ProfanityFilter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +45,7 @@ public class PlaceReviewCommandService {
     private final PlaceRepository placeRepository;
     private final PlaceReviewRepository placeReviewRepository;
     private final PlaceReviewImageRepository placeReviewImageRepository;
+    private final ProfanityFilter profanityFilter;
 
 
     // 여행일지 작성 시 장소 리뷰 일괄 저장
@@ -50,6 +53,7 @@ public class PlaceReviewCommandService {
         if (requests == null || requests.isEmpty()) {
             return;
         }
+        requests.forEach(request -> validateUserText(request.review()));
         // findById + save 조합은 N+1 쿼리 문제가 발생함.
         // findAllById로 배치 조회하고 saveAll로 배치 저장하도록 함
 
@@ -100,6 +104,7 @@ public class PlaceReviewCommandService {
     // 여행일지 수정 시 장소 리뷰 수정
     public void updatePlaceReviews(Journal journal, List<PlaceReviewUpdateRequest> requests) {
         // 보내지 않은 장소는 KEEP으로 간주 → 온 것만 처리
+        requests.forEach(request -> validateUserText(request.review()));
         requests.forEach(request -> {
             PlaceReview placeReview = placeReviewRepository
                     .findByJournalIdAndPlaceId(journal.getId(), request.placeId())
@@ -143,5 +148,11 @@ public class PlaceReviewCommandService {
         });
 
         log.info("장소 리뷰 수정 완료: journalId={}, count={}", journal.getId(), requests.size());
+    }
+
+    private void validateUserText(String text) {
+        if (profanityFilter.containsBannedWord(text)) {
+            throw new CustomException(GlobalErrorCode.CONTAINS_BANNED_WORD);
+        }
     }
 }
