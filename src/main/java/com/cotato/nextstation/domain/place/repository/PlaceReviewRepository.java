@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.place.repository;
 
+import com.cotato.nextstation.domain.moderation.dto.ReportTarget;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -144,8 +145,9 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
     Optional<PlaceReview> findByJournalIdAndPlaceId(Long journalId, Long placeId);
 
     // 신고 대상 확인용, 리뷰 작성자는 리뷰가 속한 여행일지의 작성자다.
-    @Query("SELECT pr.journal.member.id FROM PlaceReview pr WHERE pr.id = :reviewId")
-    Optional<Long> findAuthorIdById(@Param("reviewId") Long reviewId);
+    @Query("SELECT new com.cotato.nextstation.domain.moderation.dto.ReportTarget(pr.journal.member.id, pr.review) "
+            + "FROM PlaceReview pr WHERE pr.id = :reviewId")
+    Optional<ReportTarget> findReportTargetById(@Param("reviewId") Long reviewId);
 
     interface ReviewPlaceView {
         Long getReviewId();
