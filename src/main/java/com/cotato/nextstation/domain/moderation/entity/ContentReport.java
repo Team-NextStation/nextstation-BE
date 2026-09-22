@@ -15,12 +15,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/**
- * 이용자가 접수한 콘텐츠 신고 내역.
- * <p>
- * 신고 대상이 여행일지·장소 리뷰 두 테이블에 걸쳐 있어 외래키 대신 targetType + targetId로 참조한다.
- * 대상이 늘어도 컬럼이 늘지 않으며, 대상의 존재 여부는 서비스에서 확인한다.
- */
 @Entity
 @Table(
         name = "content_report",
@@ -34,9 +28,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ContentReport extends BaseTimeEntity {
 
-    /**
-     * 신고자. 회원 탈퇴 후에도 신고 내역은 남아야 하므로 연관관계 대신 식별자만 둔다.
-     */
     @Column(name = "reporter_id", nullable = false)
     private Long reporterId;
 

@@ -35,11 +35,6 @@ public record ContentReportRequest(
         String detail
 ) {
 
-    /**
-     * 기타 사유는 선택지로 걸러지지 않으므로 내용이 없으면 무엇을 신고한 것인지 알 수 없다.
-     * <p>
-     * reason이 null인 경우는 {@code @NotNull}이 따로 잡으므로 여기서는 통과시킨다.
-     */
     @Schema(hidden = true)
     @AssertTrue(message = "기타 사유를 선택한 경우 신고 내용을 입력해야 합니다.")
     public boolean isDetailFilledWhenEtc() {
