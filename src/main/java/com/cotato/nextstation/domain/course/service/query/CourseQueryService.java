@@ -665,7 +665,7 @@ public class CourseQueryService {
      * <p>
      * 저장 탭(getMyCourses)과 달리 호선/역 필터가 없어 availableLines를 계산하지 않는다.
      * 프로필 조회와 달리 독립된 API라 여기서 직접 회원 존재를 검증한다.
-     * viewerId가 memberId를 차단했다면 빈 목록을 반환한다(차단 상대의 공개 코스는 숨긴다).
+     * viewerId와 memberId 사이에 어느 방향으로든 차단 관계가 있으면 빈 목록을 반환한다.
      */
     public MemberCourseListResponse getMemberPublicCourses(Long viewerId, Long memberId, String cursor, Integer size) {
         if (!memberExistenceQueryService.existsMember(memberId)) {
@@ -673,7 +673,7 @@ public class CourseQueryService {
             throw new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
         }
 
-        if (memberBlockRepository.existsByBlockerIdAndBlockedId(viewerId, memberId)) {
+        if (memberBlockRepository.existsBetween(viewerId, memberId)) {
             return courseConverter.toMemberCourseListResponse(List.of(), null, false);
         }
 

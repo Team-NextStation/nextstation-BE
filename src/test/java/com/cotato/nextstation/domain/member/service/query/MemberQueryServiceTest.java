@@ -143,7 +143,7 @@ class MemberQueryServiceTest {
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
                 1L, "환승러", "https://cdn.example.com/profile/1.png", 12L, 5L);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(false);
+        given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(false);
         given(memberStampQueryService.getStampCount(1L)).willReturn(12L);
         given(courseQueryService.countPublicCourses(1L)).willReturn(5L);
         given(memberConverter.toOtherProfileResponse(member, 12L, 5L)).willReturn(expected);
@@ -163,7 +163,7 @@ class MemberQueryServiceTest {
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
                 1L, "환승러", "https://cdn.example.com/profile/1.png", 0L, 0L);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(true);
+        given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(true);
         given(memberConverter.toOtherProfileResponse(member, 0L, 0L)).willReturn(expected);
 
         // when

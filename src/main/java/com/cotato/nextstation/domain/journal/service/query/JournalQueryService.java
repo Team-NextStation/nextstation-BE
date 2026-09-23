@@ -252,9 +252,9 @@ public class JournalQueryService {
             throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
         }
 
-        // 2-2. 작성자를 차단했으면 타인에게는 노출하지 않는다. 목록에서는 빠지지만
-        // journalId를 직접 아는 경우 상세로 바로 들어올 수 있어 여기서도 방어한다.
-        if (!isOwner && memberBlockRepository.existsByBlockerIdAndBlockedId(memberId, journal.getMember().getId())) {
+        // 2-2. 작성자와 조회자 사이에 어느 방향으로든 차단 관계가 있으면 타인에게는 노출하지 않는다.
+        // 목록에서는 빠지지만 journalId를 직접 아는 경우 상세로 바로 들어올 수 있어 여기서도 방어한다.
+        if (!isOwner && memberBlockRepository.existsBetween(memberId, journal.getMember().getId())) {
             throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
         }
 

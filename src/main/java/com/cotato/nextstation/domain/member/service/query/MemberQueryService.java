@@ -71,7 +71,7 @@ public class MemberQueryService {
                     return new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
                 });
 
-        boolean blocked = memberBlockRepository.existsByBlockerIdAndBlockedId(viewerId, memberId);
+        boolean blocked = memberBlockRepository.existsBetween(viewerId, memberId);
         long stampCount = blocked ? 0 : memberStampQueryService.getStampCount(memberId);
         long publicCourseCount = blocked ? 0 : courseQueryService.countPublicCourses(memberId);
         return memberConverter.toOtherProfileResponse(member, stampCount, publicCourseCount);
