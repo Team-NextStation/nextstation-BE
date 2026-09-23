@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.S3Error;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
@@ -30,6 +34,7 @@ public class ImageCommandService {
     private static final Duration PRESIGNED_URL_EXPIRATION = Duration.ofMinutes(10);
     private static final String ALLOWED_DELETE_PREFIX = "images/uploads/";
     private static final String STATIC_PLACE_DELETE_PREFIX = S3Folder.STATIC_PLACE.getPath() + "/";
+    private static final List<S3Folder> MEMBER_OWNED_FOLDERS = List.of(S3Folder.PROFILE, S3Folder.JOURNAL);
 
     private final JournalRepository journalRepository;
     private final PlaceImageRepository placeImageRepository;
@@ -119,6 +124,52 @@ public class ImageCommandService {
                 .build();
         s3Client.deleteObject(deleteRequest);
         log.info("S3 이미지 삭제 완료: key={}", key);
+    }
+
+    /**
+     * 파기 대상 회원이 올린 이미지(프로필/일지)를 prefix 단위로 모두 삭제한다.
+     * <p>
+     * DB의 이미지 URL이 아닌 prefix를 기준으로 하므로 업로드 후 저장되지 않았거나 DB에서만 빠진 파일까지 함께 정리된다.
+     *
+     * @return 모두 삭제했으면 true, 목록 조회나 삭제가 하나라도 실패하면 false
+     */
+    public boolean deleteAllOfMember(Long memberId) {
+        try {
+            int deleted = 0;
+            for (S3Folder folder : MEMBER_OWNED_FOLDERS) {
+                deleted += deleteAllUnder("%s/%d/".formatted(folder.getPath(), memberId));
+            }
+            log.info("탈퇴 회원 S3 이미지 삭제 완료: memberId={}, deleted={}", memberId, deleted);
+            return true;
+        } catch (Exception e) {
+            log.warn("탈퇴 회원 S3 이미지 삭제 실패: memberId={}", memberId, e);
+            return false;
+        }
+    }
+
+    // ListObjectsV2 한 페이지 최대 크기(1000)가 DeleteObjects 한 번의 최대 개수와 같아 페이지 단위로 그대로 삭제한다
+    private int deleteAllUnder(String prefix) {
+        int deleted = 0;
+        for (ListObjectsV2Response page : s3Client.listObjectsV2Paginator(r -> r.bucket(bucketName).prefix(prefix))) {
+            List<ObjectIdentifier> objects = page.contents().stream()
+                    .map(object -> ObjectIdentifier.builder().key(object.key()).build())
+                    .toList();
+            if (objects.isEmpty()) {
+                continue;
+            }
+
+            DeleteObjectsResponse response = s3Client.deleteObjects(r -> r.bucket(bucketName)
+                    .delete(d -> d.objects(objects).quiet(true)));
+
+            // DeleteObjects는 일부 객체가 실패해도 200을 반환하므로 errors를 직접 확인한다
+            if (response.hasErrors() && !response.errors().isEmpty()) {
+                S3Error first = response.errors().get(0);
+                throw new IllegalStateException("S3 일부 객체 삭제 실패: prefix=%s, failed=%d, firstKey=%s, code=%s"
+                        .formatted(prefix, response.errors().size(), first.key(), first.code()));
+            }
+            deleted += objects.size();
+        }
+        return deleted;
     }
 
     /**
