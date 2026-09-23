@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.member.service.command;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
@@ -65,6 +66,9 @@ class MemberCommandServiceTest {
 
     @Mock
     private PlaceReviewRepository placeReviewRepository;
+
+    @Mock
+    private MemberBlockRepository memberBlockRepository;
 
     private static final Long MEMBER_ID = 1L;
     private static final String OLD_IMAGE_URL =

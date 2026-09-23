@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.journal.service.query;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.entity.CoursePlace;
 import com.cotato.nextstation.domain.course.exception.CourseErrorCode;
 import com.cotato.nextstation.domain.course.repository.CoursePlaceRepository;
@@ -95,6 +96,8 @@ class JournalQueryServiceTest {
     private PlaceReviewRepository placeReviewRepository;
     @Mock
     private PlaceReviewImageRepository placeReviewImageRepository;
+    @Mock
+    private MemberBlockRepository memberBlockRepository;
 
     private JournalQueryService journalQueryService;
 
@@ -115,7 +118,7 @@ class JournalQueryServiceTest {
                 memberStampQueryService, courseQueryService, courseCommandService, coursePlaceRepository,
                 placeInfoQueryService, stationQueryService,
                 journalRepository, journalImageRepository,
-                placeReviewRepository, placeReviewImageRepository,
+                placeReviewRepository, placeReviewImageRepository, memberBlockRepository,
                 new JournalConverter());
 
         Member owner = mock(Member.class);

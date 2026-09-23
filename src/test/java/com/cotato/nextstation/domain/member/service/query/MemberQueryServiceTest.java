@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.member.service.query;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
 import com.cotato.nextstation.domain.member.dto.response.AccountInfoResponse;
@@ -27,7 +28,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class MemberQueryServiceTest {
@@ -49,6 +53,9 @@ class MemberQueryServiceTest {
 
     @Mock
     private CourseQueryService courseQueryService;
+
+    @Mock
+    private MemberBlockRepository memberBlockRepository;
 
     private Member activeMember() {
         Member member = Member.builder().email("user@example.com").password("encoded").build();
@@ -136,15 +143,36 @@ class MemberQueryServiceTest {
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
                 1L, "환승러", "https://cdn.example.com/profile/1.png", 12L, 5L);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(false);
         given(memberStampQueryService.getStampCount(1L)).willReturn(12L);
         given(courseQueryService.countPublicCourses(1L)).willReturn(5L);
         given(memberConverter.toOtherProfileResponse(member, 12L, 5L)).willReturn(expected);
 
         // when
-        OtherMemberProfileResponse response = memberQueryService.getMemberProfile(1L);
+        OtherMemberProfileResponse response = memberQueryService.getMemberProfile(2L, 1L);
 
         // then
         assertThat(response).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("차단한 회원의 프로필을 조회하면 스탬프/공개 코스 개수를 0으로 응답한다")
+    void getMemberProfile_blocked_countsAreZero() {
+        // given: 프로필(닉네임/이미지) 자체는 그대로 노출하되 개수만 0으로 내려간다
+        Member member = activeMember();
+        OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
+                1L, "환승러", "https://cdn.example.com/profile/1.png", 0L, 0L);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(true);
+        given(memberConverter.toOtherProfileResponse(member, 0L, 0L)).willReturn(expected);
+
+        // when
+        OtherMemberProfileResponse response = memberQueryService.getMemberProfile(2L, 1L);
+
+        // then
+        assertThat(response).isEqualTo(expected);
+        verify(memberStampQueryService, never()).getStampCount(any());
+        verify(courseQueryService, never()).countPublicCourses(any());
     }
 
     @Test
@@ -154,7 +182,7 @@ class MemberQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> memberQueryService.getMemberProfile(1L))
+        assertThatThrownBy(() -> memberQueryService.getMemberProfile(2L, 1L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
     }
@@ -168,7 +196,7 @@ class MemberQueryServiceTest {
         given(memberRepository.findById(1L)).willReturn(Optional.of(withdrawnMember));
 
         // when & then
-        assertThatThrownBy(() -> memberQueryService.getMemberProfile(1L))
+        assertThatThrownBy(() -> memberQueryService.getMemberProfile(2L, 1L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
     }

@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.course.service.query;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.converter.CourseConverter;
 import com.cotato.nextstation.domain.course.dto.request.ExploreCourseCondition;
 import com.cotato.nextstation.domain.course.dto.response.CourseInfoResponse;
@@ -98,6 +99,9 @@ class CourseQueryServiceTest {
 
     @Mock
     private MemberExistenceQueryService memberExistenceQueryService;
+
+    @Mock
+    private MemberBlockRepository memberBlockRepository;
 
     @Mock
     private CourseConverter courseConverter;
@@ -1296,7 +1300,7 @@ class CourseQueryServiceTest {
         given(memberExistenceQueryService.existsMember(2L)).willReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> courseQueryService.getMemberPublicCourses(2L, null, null))
+        assertThatThrownBy(() -> courseQueryService.getMemberPublicCourses(1L, 2L, null, null))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
         verify(courseRepository, never()).findPublicCoursesByMemberId(any(), any());
@@ -1312,7 +1316,7 @@ class CourseQueryServiceTest {
         given(courseConverter.toMemberCourseListResponse(List.of(), null, false)).willReturn(expected);
 
         // when
-        MemberCourseListResponse response = courseQueryService.getMemberPublicCourses(2L, null, 10);
+        MemberCourseListResponse response = courseQueryService.getMemberPublicCourses(1L, 2L, null, 10);
 
         // then
         assertThat(response).isEqualTo(expected);
@@ -1329,7 +1333,7 @@ class CourseQueryServiceTest {
         given(courseRepository.findPublicCoursesByMemberId(eq(2L), any(Pageable.class))).willReturn(views);
 
         // when
-        courseQueryService.getMemberPublicCourses(2L, null, 1);
+        courseQueryService.getMemberPublicCourses(1L, 2L, null, 1);
 
         // then
         ArgumentCaptor<String> cursorCaptor = ArgumentCaptor.forClass(String.class);
@@ -1355,7 +1359,7 @@ class CourseQueryServiceTest {
                         22L, new JournalCardInfoResponse(22L, null, null)));
 
         // when
-        courseQueryService.getMemberPublicCourses(2L, null, 10);
+        courseQueryService.getMemberPublicCourses(1L, 2L, null, 10);
 
         // then: 카드마다 조회했다면 journalId별로 여러 번 불렸겠지만, 모아서 한 번만 부른다
         verify(journalCardQueryService).getJournalCourseCardInfos(List.of(21L, 22L));
@@ -1375,7 +1379,7 @@ class CourseQueryServiceTest {
                 eq(2L), eq(createdAt), eq(5L), any(Pageable.class))).willReturn(List.of());
 
         // when
-        courseQueryService.getMemberPublicCourses(2L, cursor, 10);
+        courseQueryService.getMemberPublicCourses(1L, 2L, cursor, 10);
 
         // then
         verify(courseRepository).findPublicCoursesByMemberIdAfterCursor(
