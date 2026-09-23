@@ -11,7 +11,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -41,17 +40,13 @@ public class ContentReportNotifier {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onContentReported(ContentReportedEvent event) {
 
-        List<Map<String, Object>> fields = new ArrayList<>(List.of(
+        List<Map<String, Object>> fields = List.of(
                 field("대상", "%s\n`%s=%d`".formatted(
                         event.targetType(), event.targetType().getIdLabel(), event.targetId()), true),
                 field("사유", event.reason().getLabel(), true),
                 field("신고자", "`memberId=%d`".formatted(event.reporterId()), true),
                 field("본문", truncate(event.targetBody()), false)
-        ));
-
-        if (event.detail() != null && !event.detail().isBlank()) {
-            fields.add(field("신고 내용", event.detail(), false));
-        }
+        );
 
         Map<String, Object> payload = Map.of("embeds", List.of(Map.of(
                 "title", "🚨 콘텐츠 신고 접수 · reportId=%d".formatted(event.reportId()),

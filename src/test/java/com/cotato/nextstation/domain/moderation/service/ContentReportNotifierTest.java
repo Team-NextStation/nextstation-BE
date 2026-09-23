@@ -32,7 +32,7 @@ class ContentReportNotifierTest {
     void onContentReported_longBodyIsTruncated() {
         String body = "가".repeat(150);
 
-        String value = valueOf(sendAndCaptureFields(event(body, null)), "본문");
+        String value = valueOf(sendAndCaptureFields(event(body)), "본문");
 
         assertThat(value).isEqualTo("가".repeat(100) + "...");
     }
@@ -40,23 +40,15 @@ class ContentReportNotifierTest {
     @Test
     @DisplayName("본문이 비어 있어도 칸을 비워두지 않는다")
     void onContentReported_blankBodyHasPlaceholder() {
-        String value = valueOf(sendAndCaptureFields(event(null, null)), "본문");
+        String value = valueOf(sendAndCaptureFields(event(null)), "본문");
 
         assertThat(value).isNotBlank();
     }
 
     @Test
-    @DisplayName("신고 내용이 없으면 칸 자체를 만들지 않는다")
-    void onContentReported_blankDetailFieldIsOmitted() {
-        List<Map<String, Object>> fields = sendAndCaptureFields(event("리뷰 본문", "   "));
-
-        assertThat(fields).noneMatch(field -> "신고 내용".equals(field.get("name")));
-    }
-
-    @Test
     @DisplayName("대상 id를 어느 테이블의 id인지 드러나게 표기한다")
     void onContentReported_targetIdHasLabel() {
-        String value = valueOf(sendAndCaptureFields(event("리뷰 본문", null)), "대상");
+        String value = valueOf(sendAndCaptureFields(event("리뷰 본문")), "대상");
 
         assertThat(value).contains("PLACE_REVIEW").contains("reviewId=501");
     }
@@ -64,7 +56,7 @@ class ContentReportNotifierTest {
     @Test
     @DisplayName("대상·사유·신고자는 한 줄에 놓이도록 inline으로 보낸다")
     void onContentReported_summaryFieldsAreInline() {
-        List<Map<String, Object>> fields = sendAndCaptureFields(event("리뷰 본문", null));
+        List<Map<String, Object>> fields = sendAndCaptureFields(event("리뷰 본문"));
 
         assertThat(fields).filteredOn(field -> Boolean.TRUE.equals(field.get("inline")))
                 .extracting(field -> field.get("name"))
@@ -90,8 +82,8 @@ class ContentReportNotifierTest {
                 .orElseThrow(() -> new AssertionError("%s 칸이 없다".formatted(name)));
     }
 
-    private ContentReportedEvent event(String targetBody, String detail) {
+    private ContentReportedEvent event(String targetBody) {
         return new ContentReportedEvent(12L, 1L, ReportTargetType.PLACE_REVIEW, 501L,
-                ReportReason.FALSE_INFORMATION, detail, targetBody);
+                ReportReason.ABUSIVE_CONTENT, targetBody);
     }
 }

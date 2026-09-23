@@ -66,7 +66,7 @@ class ContentReportCommandServiceTest {
 
         // when
         ContentReportResponse response = contentReportCommandService.report(
-                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.COMMERCIAL_AD, null));
+                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.SPAM_AD));
 
         // then
         assertThat(response.reportId()).isEqualTo(SAVED_REPORT_ID);
@@ -89,7 +89,7 @@ class ContentReportCommandServiceTest {
 
         // when
         ContentReportResponse response = contentReportCommandService.report(
-                REPORTER_ID, request(ReportTargetType.PLACE_REVIEW, ReportReason.OBSCENE, null));
+                REPORTER_ID, request(ReportTargetType.PLACE_REVIEW, ReportReason.HATE_OR_OFFENSIVE));
 
         // then
         assertThat(response.reportId()).isEqualTo(SAVED_REPORT_ID);
@@ -104,7 +104,7 @@ class ContentReportCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> contentReportCommandService.report(
-                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.COMMERCIAL_AD, null)))
+                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.SPAM_AD)))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ReportErrorCode.REPORT_TARGET_NOT_FOUND.getMessage());
 
@@ -120,7 +120,7 @@ class ContentReportCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> contentReportCommandService.report(
-                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.FALSE_INFORMATION, null)))
+                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.ABUSIVE_CONTENT)))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ReportErrorCode.SELF_REPORT_NOT_ALLOWED.getMessage());
 
@@ -139,7 +139,7 @@ class ContentReportCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> contentReportCommandService.report(
-                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.COMMERCIAL_AD, null)))
+                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.SPAM_AD)))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(ReportErrorCode.REPORT_ALREADY_EXISTS.getMessage());
 
@@ -155,7 +155,7 @@ class ContentReportCommandServiceTest {
         });
     }
 
-    private ContentReportRequest request(ReportTargetType targetType, ReportReason reason, String detail) {
-        return new ContentReportRequest(targetType, TARGET_ID, reason, detail);
+    private ContentReportRequest request(ReportTargetType targetType, ReportReason reason) {
+        return new ContentReportRequest(targetType, TARGET_ID, reason);
     }
 }

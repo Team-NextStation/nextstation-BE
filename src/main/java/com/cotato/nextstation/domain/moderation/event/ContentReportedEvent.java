@@ -14,7 +14,6 @@ public record ContentReportedEvent(
         ReportTargetType targetType,
         Long targetId,
         ReportReason reason,
-        String detail,
         String targetBody
 ) {
 }

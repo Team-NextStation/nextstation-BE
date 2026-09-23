@@ -42,17 +42,12 @@ public class ContentReport extends BaseTimeEntity {
     @Column(nullable = false, length = 30)
     private ReportReason reason;
 
-    // 사유가 ETC일 때 이용자가 직접 입력한 내용
-    @Column(length = 500)
-    private String detail;
-
     @Builder
     public ContentReport(Long reporterId, ReportTargetType targetType, Long targetId,
-                         ReportReason reason, String detail) {
+                         ReportReason reason) {
         this.reporterId = reporterId;
         this.targetType = targetType;
         this.targetId = targetId;
         this.reason = reason;
-        this.detail = detail;
     }
 }

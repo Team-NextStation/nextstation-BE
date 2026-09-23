@@ -49,7 +49,6 @@ public class ContentReportCommandService {
                 .targetType(targetType)
                 .targetId(targetId)
                 .reason(request.reason())
-                .detail(request.detail())
                 .build();
 
         ContentReport saved;
@@ -65,8 +64,7 @@ public class ContentReportCommandService {
         log.info("콘텐츠 신고 접수 완료: reportId={}, reporterId={}", saved.getId(), reporterId);
 
         eventPublisher.publishEvent(new ContentReportedEvent(
-                saved.getId(), reporterId, targetType, targetId, request.reason(), request.detail(),
-                target.body()));
+                saved.getId(), reporterId, targetType, targetId, request.reason(), target.body()));
 
         return new ContentReportResponse(saved.getId());
     }

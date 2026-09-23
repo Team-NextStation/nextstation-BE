@@ -32,7 +32,6 @@ public class ContentReportController {
             description = """
                 여행일지 또는 장소 리뷰를 신고한다.
                 - targetType으로 대상 종류를, targetId로 해당 대상의 id를 보낸다.
-                - reason이 `ETC`인 경우 detail은 필수다. 그 외 사유에서는 생략할 수 있다.
                 - 삭제됐거나 존재하지 않는 대상은 신고할 수 없다.
                 - 본인이 작성한 콘텐츠는 신고할 수 없다.
                 - 같은 대상을 두 번 신고하면 실패한다.
@@ -43,7 +42,7 @@ public class ContentReportController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "신고 접수 성공"),
             @ApiResponse(responseCode = "400", description = """
-                    필수값 누락, 허용되지 않는 값 또는 기타 사유인데 detail이 비어 있음 (`GlobalErrorCode.VALIDATION_ERROR`)
+                    필수값 누락 또는 허용되지 않는 값 (`GlobalErrorCode.VALIDATION_ERROR`)
                     또는 본인이 작성한 콘텐츠를 신고 (`ReportErrorCode.SELF_REPORT_NOT_ALLOWED`)"""),
             @ApiResponse(responseCode = "401", description = "accessToken이 없거나 위변조·만료 (`GlobalErrorCode.UNAUTHORIZED`, `GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
             @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 신고 대상 (`ReportErrorCode.REPORT_TARGET_NOT_FOUND`)"),
