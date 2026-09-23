@@ -41,7 +41,7 @@ public class ContentReportCommandService {
 
         ReportTarget target = findTarget(targetType, targetId);
         if (target.authorId().equals(reporterId)) {
-            log.warn("본인 콘텐츠 신고 차단: reporterId={}, targetType={}, targetId={}",
+            log.warn("본인 대상 신고 차단: reporterId={}, targetType={}, targetId={}",
                     reporterId, targetType, targetId);
             throw new CustomException(ReportErrorCode.SELF_REPORT_NOT_ALLOWED);
         }

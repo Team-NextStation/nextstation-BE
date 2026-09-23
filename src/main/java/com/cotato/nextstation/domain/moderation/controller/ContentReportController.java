@@ -44,10 +44,10 @@ public class ContentReportController {
             @ApiResponse(responseCode = "200", description = "신고 접수 성공"),
             @ApiResponse(responseCode = "400", description = """
                     필수값 누락 또는 허용되지 않는 값 (`GlobalErrorCode.VALIDATION_ERROR`)
-                    또는 본인이 작성한 콘텐츠를 신고 (`ReportErrorCode.SELF_REPORT_NOT_ALLOWED`)"""),
+                    또는 본인이 작성한 콘텐츠·본인 프로필을 신고 (`ReportErrorCode.SELF_REPORT_NOT_ALLOWED`)"""),
             @ApiResponse(responseCode = "401", description = "accessToken이 없거나 위변조·만료 (`GlobalErrorCode.UNAUTHORIZED`, `GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
             @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 신고 대상 (`ReportErrorCode.REPORT_TARGET_NOT_FOUND`)"),
-            @ApiResponse(responseCode = "409", description = "이미 신고한 콘텐츠 (`ReportErrorCode.REPORT_ALREADY_EXISTS`)"),
+            @ApiResponse(responseCode = "409", description = "이미 신고한 대상 (`ReportErrorCode.REPORT_ALREADY_EXISTS`)"),
     })
     @PostMapping
     public CommonResponse<ContentReportResponse> report(
