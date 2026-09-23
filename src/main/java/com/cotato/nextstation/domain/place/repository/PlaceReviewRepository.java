@@ -30,8 +30,11 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY pr.createdAt DESC")
-    List<PlaceReview> findVisibleReviewsByPlaceId(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceReview> findVisibleReviewsByPlaceId(@Param("placeId") Long placeId,
+                                                   @Param("currentMemberId") Long currentMemberId,
+                                                   Pageable pageable);
 
     // 좋아요 추가 시 원자적 증가 (동시성 안전)
     @Modifying
