@@ -141,6 +141,22 @@ class CourseQueryServiceTest {
     }
 
     @Test
+    @DisplayName("차단 필터용 viewerId가 placeId와 뒤바뀌지 않고 정확히 전달된다")
+    void getCoursesByPlace_passesViewerIdCorrectly() {
+        // given: viewerId와 placeId를 다른 값으로 둬야 둘이 뒤바뀌는 실수를 잡을 수 있다
+        Long viewerId = 9L;
+        Long placeId = 1L;
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(placeId), eq(viewerId), any(Pageable.class)))
+                .willReturn(List.of());
+
+        // when
+        courseQueryService.getCoursesByPlace(viewerId, placeId);
+
+        // then
+        verify(courseRepository).findPopularPublicCoursesByPlaceId(eq(placeId), eq(viewerId), any(Pageable.class));
+    }
+
+    @Test
     @DisplayName("코스가 없으면 장소 조회를 하지 않고 빈 목록을 반환한다")
     void getCoursesByPlace_noCourses() {
         // given
