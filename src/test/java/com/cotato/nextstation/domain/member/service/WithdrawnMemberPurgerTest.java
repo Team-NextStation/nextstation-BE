@@ -64,7 +64,9 @@ class WithdrawnMemberPurgerTest {
         assertThat(sqls).allMatch(sql -> sql.startsWith("DELETE FROM"));
         assertThat(tables(sqls)).contains("journal", "journal_image", "course", "course_like", "place_review",
                 "place_review_like", "member_place_stamps", "member_terms_agreement", "social_oauth_credential",
-                "member_social_account", "email_verification", "recommendation_log", "member");
+                "member_social_account", "email_verification", "recommendation_log", "member_block", "member");
+        // 유예 기간 중 새로 생긴 차단 관계도 member보다 먼저 정리된다
+        assertThat(indexOfTable(sqls, "member_block")).isLessThan(indexOfTable(sqls, "member"));
         then(query).should(org.mockito.Mockito.atLeastOnce()).setParameter("ids", List.of(1L, 2L));
     }
 
