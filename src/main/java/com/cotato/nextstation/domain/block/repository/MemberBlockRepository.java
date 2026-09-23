@@ -10,6 +10,12 @@ import java.util.List;
 
 public interface MemberBlockRepository extends JpaRepository<MemberBlock, Long> {
 
+    // 여러 작성자가 섞인 목록(장소 리뷰 등)에서, 조회자(:currentMemberId)가 작성자(mem)를 차단했으면
+    // 그 행을 제외하는 조건. 비로그인(:currentMemberId가 null)이면 아무도 걸러지지 않는다.
+    // NOT_WITHDRAWN과 마찬가지로 별칭 "mem"을 요구한다.
+    String NOT_BLOCKED_BY_VIEWER = "(:currentMemberId IS NULL OR mem.id NOT IN " +
+            "(SELECT mb.blockedId FROM MemberBlock mb WHERE mb.blockerId = :currentMemberId))";
+
     boolean existsByBlockerIdAndBlockedId(Long blockerId, Long blockedId);
 
     List<MemberBlock> findByBlockerId(Long blockerId);

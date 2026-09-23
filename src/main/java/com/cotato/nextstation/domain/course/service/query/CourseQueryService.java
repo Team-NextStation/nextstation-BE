@@ -33,6 +33,7 @@ import com.cotato.nextstation.domain.course.repository.CourseRepository.PlaceCou
 import com.cotato.nextstation.domain.course.repository.CourseRepository.PopularCourseView;
 import com.cotato.nextstation.domain.course.repository.CourseLikeRepository;
 import com.cotato.nextstation.domain.course.repository.CourseLikeRepository.LikedCourseView;
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.journal.dto.response.JournalCardInfoResponse;
 import com.cotato.nextstation.domain.journal.enums.TravelDuration;
 import com.cotato.nextstation.domain.journal.service.query.JournalCardQueryService;
@@ -110,6 +111,7 @@ public class CourseQueryService {
     private final MemberStampQueryService memberStampQueryService;
     private final JournalCardQueryService journalCardQueryService;
     private final MemberExistenceQueryService memberExistenceQueryService;
+    private final MemberBlockRepository memberBlockRepository;
     private final CourseConverter courseConverter;
 
     /**
@@ -663,11 +665,16 @@ public class CourseQueryService {
      * <p>
      * 저장 탭(getMyCourses)과 달리 호선/역 필터가 없어 availableLines를 계산하지 않는다.
      * 프로필 조회와 달리 독립된 API라 여기서 직접 회원 존재를 검증한다.
+     * viewerId가 memberId를 차단했다면 빈 목록을 반환한다(차단 상대의 공개 코스는 숨긴다).
      */
-    public MemberCourseListResponse getMemberPublicCourses(Long memberId, String cursor, Integer size) {
+    public MemberCourseListResponse getMemberPublicCourses(Long viewerId, Long memberId, String cursor, Integer size) {
         if (!memberExistenceQueryService.existsMember(memberId)) {
             log.warn("존재하지 않는 회원의 공개코스 탭 조회 시도: memberId={}", memberId);
             throw new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
+        }
+
+        if (memberBlockRepository.existsByBlockerIdAndBlockedId(viewerId, memberId)) {
+            return courseConverter.toMemberCourseListResponse(List.of(), null, false);
         }
 
         int pageSize = resolvePageSize(size);

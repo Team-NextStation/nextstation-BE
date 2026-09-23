@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+import static com.cotato.nextstation.domain.block.repository.MemberBlockRepository.NOT_BLOCKED_BY_VIEWER;
 
 public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> {
 
@@ -71,8 +72,11 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY pr.createdAt DESC, pr.id DESC")
-    List<PlaceReview> findByPlaceIdOrderByLatest(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceReview> findByPlaceIdOrderByLatest(@Param("placeId") Long placeId,
+                                                  @Param("currentMemberId") Long currentMemberId,
+                                                  Pageable pageable);
 
     // 장소 리뷰 목록 - 최신순, 커서 이후 페이지
     @Query("SELECT pr FROM PlaceReview pr " +
@@ -81,12 +85,14 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "AND (pr.createdAt < :createdAt OR (pr.createdAt = :createdAt AND pr.id < :reviewId)) " +
             "ORDER BY pr.createdAt DESC, pr.id DESC")
     List<PlaceReview> findByPlaceIdOrderByLatestAfterCursor(
             @Param("placeId") Long placeId,
             @Param("createdAt") LocalDateTime createdAt,
             @Param("reviewId") Long reviewId,
+            @Param("currentMemberId") Long currentMemberId,
             Pageable pageable);
 
     // 장소 리뷰 목록 - 추천순(likeCount 캐시 컬럼 기준), 최초 페이지
@@ -96,8 +102,11 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY pr.likeCount DESC, pr.id DESC")
-    List<PlaceReview> findByPlaceIdOrderByRecommend(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceReview> findByPlaceIdOrderByRecommend(@Param("placeId") Long placeId,
+                                                     @Param("currentMemberId") Long currentMemberId,
+                                                     Pageable pageable);
 
     // 장소 리뷰 목록 - 추천순, 커서 이후 페이지
     @Query("SELECT pr FROM PlaceReview pr " +
@@ -106,12 +115,14 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "AND (pr.likeCount < :likeCount OR (pr.likeCount = :likeCount AND pr.id < :reviewId)) " +
             "ORDER BY pr.likeCount DESC, pr.id DESC")
     List<PlaceReview> findByPlaceIdOrderByRecommendAfterCursor(
             @Param("placeId") Long placeId,
             @Param("likeCount") long likeCount,
             @Param("reviewId") Long reviewId,
+            @Param("currentMemberId") Long currentMemberId,
             Pageable pageable);
 
     // 장소 리뷰 총 개수 (내용 없는 리뷰는 카운트에서도 제외)
@@ -126,8 +137,9 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND j.isDeleted = false " +
             "AND " + HAS_CONTENT + " " +
-            "AND " + NOT_WITHDRAWN)
-    long countByPlaceId(@Param("placeId") Long placeId);
+            "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER)
+    long countByPlaceId(@Param("placeId") Long placeId, @Param("currentMemberId") Long currentMemberId);
 
     // 여행일지에 연결된 장소 리뷰 리스트
     List<PlaceReview> findByJournalId(Long journalId);

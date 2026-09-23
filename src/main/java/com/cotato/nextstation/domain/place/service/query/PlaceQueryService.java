@@ -36,7 +36,9 @@ public class PlaceQueryService {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new CustomException(PlaceErrorCode.PLACE_NOT_FOUND));
 
-        long totalReviewCount = placeReviewRepository.countByPlaceId(placeId);
+        // 이 엔드포인트는 인증 정보를 받지 않아(비로그인 포함 공통 조회) 차단 필터를 적용할
+        // 조회자를 알 수 없다. countByPlaceId(placeId, null)은 차단 조건을 건너뛴다.
+        long totalReviewCount = placeReviewRepository.countByPlaceId(placeId, null);
 
 
         List<PlaceImage> placeImages = placeImageRepository.findByPlaceOrderBySortOrderAsc(place);

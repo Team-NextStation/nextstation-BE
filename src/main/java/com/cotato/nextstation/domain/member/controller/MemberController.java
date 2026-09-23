@@ -169,7 +169,7 @@ public class MemberController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "조회할 회원 ID", example = "2")
             @PathVariable @Positive Long memberId) {
-        return CommonResponse.success(memberQueryService.getMemberProfile(memberId));
+        return CommonResponse.success(memberQueryService.getMemberProfile(principal.memberId(), memberId));
     }
 
     @Operation(
@@ -194,7 +194,7 @@ public class MemberController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "조회할 회원 ID", example = "2")
             @PathVariable @Positive Long memberId) {
-        return CommonResponse.success(memberStampQueryService.getMemberStamps(memberId));
+        return CommonResponse.success(memberStampQueryService.getMemberStamps(principal.memberId(), memberId));
     }
 
     @Operation(
@@ -221,6 +221,6 @@ public class MemberController {
             @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (1~50, 기본 10)", example = "10")
             @RequestParam(required = false) Integer size) {
-        return CommonResponse.success(courseQueryService.getMemberPublicCourses(memberId, cursor, size));
+        return CommonResponse.success(courseQueryService.getMemberPublicCourses(principal.memberId(), memberId, cursor, size));
     }
 }
