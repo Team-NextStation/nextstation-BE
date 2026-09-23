@@ -3,6 +3,7 @@ package com.cotato.nextstation.domain.block.service.command;
 import com.cotato.nextstation.domain.block.entity.MemberBlock;
 import com.cotato.nextstation.domain.block.exception.MemberBlockErrorCode;
 import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.global.exception.CustomException;
@@ -41,7 +42,7 @@ class MemberBlockCommandServiceTest {
         // given: blockerId와 blockedId를 다른 값으로 둬야 둘이 뒤바뀌는 실수를 잡을 수 있다
         Long blockerId = 1L;
         Long blockedId = 2L;
-        given(memberRepository.existsById(blockedId)).willReturn(true);
+        given(memberRepository.existsByIdAndStatusNot(blockedId, MemberStatus.WITHDRAWN)).willReturn(true);
         given(memberBlockRepository.existsByBlockerIdAndBlockedId(blockerId, blockedId)).willReturn(false);
 
         // when
@@ -61,7 +62,7 @@ class MemberBlockCommandServiceTest {
         assertThatThrownBy(() -> memberBlockCommandService.block(1L, 1L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberBlockErrorCode.SELF_BLOCK_NOT_ALLOWED.getMessage());
-        verify(memberRepository, never()).existsById(any());
+        verify(memberRepository, never()).existsByIdAndStatusNot(any(), any());
         verify(memberBlockRepository, never()).save(any());
     }
 
@@ -69,7 +70,20 @@ class MemberBlockCommandServiceTest {
     @DisplayName("존재하지 않는 회원은 차단할 수 없다")
     void block_memberNotFound() {
         // given
-        given(memberRepository.existsById(2L)).willReturn(false);
+        given(memberRepository.existsByIdAndStatusNot(2L, MemberStatus.WITHDRAWN)).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> memberBlockCommandService.block(1L, 2L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
+        verify(memberBlockRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("탈퇴한 회원은 존재하지 않는 회원과 동일하게 차단할 수 없다")
+    void block_withdrawnMemberTreatedAsNotFound() {
+        // given: 탈퇴 여부가 존재하지 않는 회원과 다른 응답으로 새어나가지 않도록 같은 예외를 던져야 한다
+        given(memberRepository.existsByIdAndStatusNot(2L, MemberStatus.WITHDRAWN)).willReturn(false);
 
         // when & then
         assertThatThrownBy(() -> memberBlockCommandService.block(1L, 2L))
@@ -82,7 +96,7 @@ class MemberBlockCommandServiceTest {
     @DisplayName("이미 차단한 사용자를 다시 차단하면 예외가 발생한다")
     void block_duplicate() {
         // given
-        given(memberRepository.existsById(2L)).willReturn(true);
+        given(memberRepository.existsByIdAndStatusNot(2L, MemberStatus.WITHDRAWN)).willReturn(true);
         given(memberBlockRepository.existsByBlockerIdAndBlockedId(1L, 2L)).willReturn(true);
 
         // when & then
@@ -96,7 +110,7 @@ class MemberBlockCommandServiceTest {
     @DisplayName("동시 요청으로 유니크 제약에 걸리면 중복 차단 예외로 응답한다")
     void block_raceCondition() {
         // given: 중복 확인은 통과했지만 저장 시점에 다른 요청이 먼저 커밋된 상황
-        given(memberRepository.existsById(2L)).willReturn(true);
+        given(memberRepository.existsByIdAndStatusNot(2L, MemberStatus.WITHDRAWN)).willReturn(true);
         given(memberBlockRepository.existsByBlockerIdAndBlockedId(1L, 2L)).willReturn(false);
         willThrow(new DataIntegrityViolationException("unique"))
                 .given(memberBlockRepository).save(any(MemberBlock.class));

@@ -3,6 +3,7 @@ package com.cotato.nextstation.domain.block.service.command;
 import com.cotato.nextstation.domain.block.entity.MemberBlock;
 import com.cotato.nextstation.domain.block.exception.MemberBlockErrorCode;
 import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
+import com.cotato.nextstation.domain.member.entity.MemberStatus;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.global.exception.CustomException;
@@ -23,7 +24,7 @@ public class MemberBlockCommandService {
         if (blockerId.equals(blockedId)) {
             throw new CustomException(MemberBlockErrorCode.SELF_BLOCK_NOT_ALLOWED);
         }
-        if (!memberRepository.existsById(blockedId)) {
+        if (!memberRepository.existsByIdAndStatusNot(blockedId, MemberStatus.WITHDRAWN)) {
             throw new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
         }
         if (memberBlockRepository.existsByBlockerIdAndBlockedId(blockerId, blockedId)) {

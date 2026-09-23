@@ -57,7 +57,8 @@ public class SwaggerConfig {
             "/api/v1/explore/courses/popular",
             "/api/v1/explore/concept-tours",
             "/api/v1/explore/concept-tours/{conceptTourId}/courses",
-            "/api/v1/journals/{journalId}"
+            "/api/v1/journals/{journalId}",
+            "/api/v1/places/{placeId}"
     );
 
     /**
