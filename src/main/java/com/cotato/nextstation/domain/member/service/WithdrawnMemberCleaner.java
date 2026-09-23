@@ -118,7 +118,7 @@ public class WithdrawnMemberCleaner {
             }
         }
 
-        logFailures("Apple", failedMemberIds, attemptedMemberIds.size());
+        logFailures("Apple 연동 해제", failedMemberIds, attemptedMemberIds.size());
         return failedMemberIds;
     }
 
@@ -152,7 +152,7 @@ public class WithdrawnMemberCleaner {
             }
         }
 
-        logFailures("카카오", failedMemberIds, attemptedMemberIds.size());
+        logFailures("카카오 연동 해제", failedMemberIds, attemptedMemberIds.size());
         return failedMemberIds;
     }
 
@@ -162,21 +162,19 @@ public class WithdrawnMemberCleaner {
                 .filter(memberId -> !imageCommandService.deleteAllOfMember(memberId))
                 .collect(Collectors.toSet());
 
-        logFailures("S3 이미지", failedMemberIds, memberIds.size());
+        logFailures("S3 이미지 삭제", failedMemberIds, memberIds.size());
         return failedMemberIds;
     }
 
-    // 일부만 실패하면 그 회원들 refresh_token/연동 정보가 아직 남아있어 다음 배치가 알아서 재시도한다(WARN으로 충분).
-    // 시도한 회원 전원이 실패하면 개별 계정 문제가 아니라 어드민 키 만료·인증서 문제 같은 설정/연동 자체의
-    // 장애일 가능성이 높고, 그 상태로는 파기가 계속 밀리므로 놓치지 않도록 ERROR로 올린다.
-    private void logFailures(String provider, Set<Long> failedMemberIds, int attemptedCount) {
+    // 일부 실패는 다음 배치가 재시도하므로 WARN, 전원 실패는 키·권한 같은 설정 장애일 가능성이 높아 ERROR로 남긴다.
+    private void logFailures(String task, Set<Long> failedMemberIds, int attemptedCount) {
         if (failedMemberIds.isEmpty()) {
             return;
         }
         if (failedMemberIds.size() == attemptedCount) {
-            log.error("{} 연동 해제가 전원 실패했다 - 설정/연동 자체의 문제일 수 있다: memberIds={}", provider, failedMemberIds);
+            log.error("{} 전원 실패 - 설정/연동 자체의 문제일 수 있다: memberIds={}", task, failedMemberIds);
         } else {
-            log.warn("{} 연동 해제 실패로 이번 파기에서 제외: memberIds={}", provider, failedMemberIds);
+            log.warn("{} 실패로 이번 파기에서 제외: memberIds={}", task, failedMemberIds);
         }
     }
 }
