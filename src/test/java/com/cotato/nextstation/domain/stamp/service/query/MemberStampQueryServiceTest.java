@@ -146,6 +146,22 @@ class MemberStampQueryServiceTest {
     }
 
     @Test
+    @DisplayName("조회자와 상대 사이에 차단 관계가 있으면 조회 없이 빈 목록을 반환한다")
+    void getMemberStamps_blocked_returnsEmptyList() {
+        // given
+        given(memberExistenceQueryService.existsMember(2L)).willReturn(true);
+        given(memberBlockRepository.existsBetween(1L, 2L)).willReturn(true);
+
+        // when
+        MemberStampListResponse response = memberStampQueryService.getMemberStamps(1L, 2L);
+
+        // then
+        assertThat(response.stampCount()).isZero();
+        assertThat(response.stamps()).isEmpty();
+        verify(memberStampRepository, never()).findVisitedStationsByMemberId(any());
+    }
+
+    @Test
     @DisplayName("1호선 → 9호선 순으로 정렬하고, 대표 호선이 없는 역은 맨 뒤로 보낸다")
     void getMemberStamps_sortsByLineOrderWithNoLineLast() {
         // given: 일부러 뒤섞어서 넘긴다 (3호선, 노선없음, 1호선)

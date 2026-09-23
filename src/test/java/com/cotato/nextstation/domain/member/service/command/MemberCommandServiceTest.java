@@ -246,6 +246,8 @@ class MemberCommandServiceTest {
         // 이 회원이 남의 코스/리뷰에 남겨둔 좋아요가 like_count에서 즉시 빠져야 한다
         verify(courseRepository).decreaseLikeCountForLikesByMember(1L);
         verify(placeReviewRepository).decrementLikeCountForLikesByMember(1L);
+        // 이 회원이 걸었던 차단, 이 회원을 향한 차단이 모두 해제되어야 한다
+        verify(memberBlockRepository).deleteByBlockerIdOrBlockedId(1L, 1L);
     }
 
     @Test

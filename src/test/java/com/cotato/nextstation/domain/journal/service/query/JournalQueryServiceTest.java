@@ -480,6 +480,32 @@ class JournalQueryServiceTest {
         }
 
         @Test
+        @DisplayName("작성자와 조회자 사이에 차단 관계가 있으면 JOURNAL_NOT_FOUND를 던진다")
+        void blockedRelationExists_throwsNotFoundAndNeverIncreasesViewCount() {
+            // given: 목록에서는 빠지지만 journalId를 직접 아는 경우 상세로 바로 들어올 수 있어 여기서도 방어한다
+            given(memberBlockRepository.existsBetween(OTHER_MEMBER_ID, OWNER_ID)).willReturn(true);
+
+            // when & then
+            assertThatThrownBy(() -> journalQueryService.getJournalDetail(OTHER_MEMBER_ID, JOURNAL_ID))
+                    .isInstanceOf(CustomException.class)
+                    .hasMessageContaining(JournalErrorCode.JOURNAL_NOT_FOUND.getMessage());
+
+            verify(courseCommandService, never()).increaseViewCount(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("본인은 자신을 향한 차단 관계와 무관하게 자기 일지를 그대로 조회할 수 있다")
+        void ownerViewsOwnJournal_evenIfBlockedRelationExists() {
+            // given: existsBetween을 stub하지 않아도 본인 조회는 isOwner에서 걸러져 호출되지 않는다
+            given(courseQueryService.isLikedByMember(COURSE_ID, OWNER_ID)).willReturn(false);
+
+            // when & then
+            assertThatCode(() -> journalQueryService.getJournalDetail(OWNER_ID, JOURNAL_ID))
+                    .doesNotThrowAnyException();
+            verify(memberBlockRepository, never()).existsBetween(any(), any());
+        }
+
+        @Test
         @DisplayName("본인은 자신이 탈퇴 처리된 상태여도(예: 탈퇴 유예 기간 중 재로그인) 자기 일지를 그대로 조회할 수 있다")
         void ownerViewsOwnJournal_evenIfWithdrawn() {
             // given

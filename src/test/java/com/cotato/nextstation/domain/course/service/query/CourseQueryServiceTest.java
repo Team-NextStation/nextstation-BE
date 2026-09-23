@@ -1307,6 +1307,24 @@ class CourseQueryServiceTest {
     }
 
     @Test
+    @DisplayName("조회자와 상대 사이에 차단 관계가 있으면 조회 없이 빈 목록을 반환한다")
+    void getMemberPublicCourses_blocked_returnsEmptyList() {
+        // given
+        given(memberExistenceQueryService.existsMember(2L)).willReturn(true);
+        given(memberBlockRepository.existsBetween(1L, 2L)).willReturn(true);
+        MemberCourseListResponse expected = new MemberCourseListResponse(List.of(), null, false);
+        given(courseConverter.toMemberCourseListResponse(List.of(), null, false)).willReturn(expected);
+
+        // when
+        MemberCourseListResponse response = courseQueryService.getMemberPublicCourses(1L, 2L, null, null);
+
+        // then
+        assertThat(response).isEqualTo(expected);
+        verify(courseRepository, never()).findPublicCoursesByMemberId(any(), any());
+        verify(courseRepository, never()).findPublicCoursesByMemberIdAfterCursor(any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("첫 페이지는 memberId로 공개 코스를 조회해 카드로 변환한다")
     void getMemberPublicCourses_firstPage() {
         // given
