@@ -10,7 +10,7 @@ public record ContentReportRequest(
 
         @Schema(
                 description = "신고 대상 종류", example = "PLACE_REVIEW",
-                allowableValues = {"JOURNAL", "PLACE_REVIEW"}
+                allowableValues = {"JOURNAL", "PLACE_REVIEW", "PROFILE"}
         )
         @NotNull(message = "신고 대상 종류는 필수입니다.")
         ReportTargetType targetType,

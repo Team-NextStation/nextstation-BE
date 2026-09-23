@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.moderation.service.command;
 
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
+import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.moderation.dto.ReportTarget;
 import com.cotato.nextstation.domain.moderation.dto.request.ContentReportRequest;
 import com.cotato.nextstation.domain.moderation.dto.response.ContentReportResponse;
@@ -54,6 +55,9 @@ class ContentReportCommandServiceTest {
     private PlaceReviewRepository placeReviewRepository;
 
     @Mock
+    private MemberRepository memberRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @Test
@@ -94,6 +98,43 @@ class ContentReportCommandServiceTest {
         // then
         assertThat(response.reportId()).isEqualTo(SAVED_REPORT_ID);
         then(journalRepository).should(never()).findReportTargetById(any());
+    }
+
+    @Test
+    @DisplayName("프로필을 신고하면 회원 본인이 작성자 기준이 된다")
+    void report_member() {
+        // given
+        given(memberRepository.findReportTargetById(TARGET_ID))
+                .willReturn(Optional.of(new ReportTarget(TARGET_ID, "민성")));
+        givenSavedWithId();
+
+        // when
+        ContentReportResponse response = contentReportCommandService.report(
+                REPORTER_ID, request(ReportTargetType.PROFILE, ReportReason.ABUSIVE_CONTENT));
+
+        // then
+        assertThat(response.reportId()).isEqualTo(SAVED_REPORT_ID);
+
+        ArgumentCaptor<ContentReportedEvent> captor = ArgumentCaptor.forClass(ContentReportedEvent.class);
+        then(eventPublisher).should().publishEvent(captor.capture());
+        assertThat(captor.getValue().targetType()).isEqualTo(ReportTargetType.PROFILE);
+        assertThat(captor.getValue().targetBody()).isEqualTo("민성");
+    }
+
+    @Test
+    @DisplayName("본인 프로필은 신고할 수 없다")
+    void report_selfProfile() {
+        // given
+        given(memberRepository.findReportTargetById(REPORTER_ID))
+                .willReturn(Optional.of(new ReportTarget(REPORTER_ID, "민성")));
+
+        // when & then
+        assertThatThrownBy(() -> contentReportCommandService.report(REPORTER_ID,
+                new ContentReportRequest(ReportTargetType.PROFILE, REPORTER_ID, ReportReason.ABUSIVE_CONTENT)))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ReportErrorCode.SELF_REPORT_NOT_ALLOWED.getMessage());
+
+        then(contentReportRepository).should(never()).save(any());
     }
 
     @Test

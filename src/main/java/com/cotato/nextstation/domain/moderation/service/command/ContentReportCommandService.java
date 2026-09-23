@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.moderation.service.command;
 
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
+import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.moderation.dto.ReportTarget;
 import com.cotato.nextstation.domain.moderation.dto.request.ContentReportRequest;
 import com.cotato.nextstation.domain.moderation.dto.response.ContentReportResponse;
@@ -29,6 +30,7 @@ public class ContentReportCommandService {
     private final ContentReportRepository contentReportRepository;
     private final JournalRepository journalRepository;
     private final PlaceReviewRepository placeReviewRepository;
+    private final MemberRepository memberRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public ContentReportResponse report(Long reporterId, ContentReportRequest request) {
@@ -72,13 +74,15 @@ public class ContentReportCommandService {
     /**
      * 신고 대상의 작성자와 본문을 조회한다. 대상이 없거나 삭제된 경우 신고할 수 없다.
      * <p>
-     * 두 대상 모두 엔티티에 {@code @SQLRestriction(is_deleted = false)}이 걸려 있어
-     * 삭제된 행은 조회 단계에서 빠진다.
+     * 일지와 리뷰는 엔티티에 {@code @SQLRestriction(is_deleted = false)}이 걸려 있어 삭제된 행이
+     * 조회 단계에서 빠지고, 회원은 쿼리에서 탈퇴 회원을 걸러낸다.
+     * 프로필 신고는 회원 자신이 작성자이자 대상이므로 본인 신고 차단이 그대로 적용된다.
      */
     private ReportTarget findTarget(ReportTargetType targetType, Long targetId) {
         Optional<ReportTarget> target = switch (targetType) {
             case JOURNAL -> journalRepository.findReportTargetById(targetId);
             case PLACE_REVIEW -> placeReviewRepository.findReportTargetById(targetId);
+            case PROFILE -> memberRepository.findReportTargetById(targetId);
         };
 
         return target.orElseThrow(() -> {
