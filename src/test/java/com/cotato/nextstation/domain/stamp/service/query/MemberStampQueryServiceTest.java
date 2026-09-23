@@ -148,7 +148,8 @@ class MemberStampQueryServiceTest {
     @Test
     @DisplayName("조회자와 상대 사이에 차단 관계가 있으면 조회 없이 빈 목록을 반환한다")
     void getMemberStamps_blocked_returnsEmptyList() {
-        // given
+        // given: 차단 안내는 프로필 카드(OtherMemberProfileResponse.blocked)에서만 노출하고,
+        // 탭은 빈 상태와 동일한 화면을 그리므로 여기서는 예외가 아니라 빈 목록으로 응답한다
         given(memberExistenceQueryService.existsMember(2L)).willReturn(true);
         given(memberBlockRepository.existsBetween(1L, 2L)).willReturn(true);
 

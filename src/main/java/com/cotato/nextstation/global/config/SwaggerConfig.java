@@ -197,4 +197,15 @@ public class SwaggerConfig {
                 .build();
     }
 
+    // 사용자 차단 관련 API
+    @Bean
+    public GroupedOpenApi blockApi() {
+        return GroupedOpenApi.builder()
+                .group("Block")
+                .displayName("Block API")
+                .packagesToScan("com.cotato.nextstation.domain.block.controller")
+                .pathsToMatch("/api/v1/members/blocks/**")
+                .build();
+    }
+
 }

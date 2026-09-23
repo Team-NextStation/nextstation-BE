@@ -18,6 +18,9 @@ public record OtherMemberProfileResponse(
         long stampCount,
 
         @Schema(description = "공개한 코스 개수. 여행일지가 공개된 코스만 센다.", example = "5")
-        long publicCourseCount
+        long publicCourseCount,
+
+        @Schema(description = "조회자와 이 회원 사이에 어느 방향으로든 차단 관계가 있는지. true면 프론트에서 \"내가 차단한 사용자예요\" 안내를 표시한다.", example = "false")
+        boolean blocked
 ) {
 }

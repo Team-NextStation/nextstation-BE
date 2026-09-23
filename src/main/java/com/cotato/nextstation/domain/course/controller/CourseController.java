@@ -131,7 +131,7 @@ public class CourseController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "가져올 원본 코스 ID", example = "1")
             @PathVariable Long courseId) {
-        return CommonResponse.success(courseQueryService.getCourseCopyPreview(courseId));
+        return CommonResponse.success(courseQueryService.getCourseCopyPreview(principal.memberId(), courseId));
     }
 
     @Operation(

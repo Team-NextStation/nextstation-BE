@@ -57,10 +57,12 @@ public class MemberQueryService {
         return memberConverter.toAccountInfoResponse(member, socialAccount);
     }
       
-    // 다른 회원 프로필(닉네임/프로필 이미지/스탬프 개수/공개 코스 개수) 조회.
+    // 다른 회원 프로필(닉네임/프로필 이미지/스탬프 개수/공개 코스 개수/차단 여부) 조회.
     // 프로필 화면 상단 헤더에서 쓰며, 스탬프·공개코스 탭 목록은 각 탭 진입 시 별도 API로 불러온다.
     // 차단한 상대라도 프로필(닉네임/이미지) 자체는 그대로 보여주되, 스탬프/공개 코스 개수는
-    // 각 탭이 빈 목록을 반환하는 것과 일관되게 0으로 응답한다.
+    // 각 탭이 빈 목록을 반환하는 것과 일관되게 0으로 응답한다. "내가 차단한 사용자예요" 안내는
+    // 프론트가 blocked 필드를 보고 이 화면(프로필 카드)에서만 표시한다 - 탭은 빈 상태와 동일하게
+    // 그리므로 스탬프/코스 API에는 별도 신호를 넣지 않는다.
     public OtherMemberProfileResponse getMemberProfile(Long viewerId, Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .filter(m -> m.getStatus() != MemberStatus.WITHDRAWN)
@@ -74,6 +76,6 @@ public class MemberQueryService {
         boolean blocked = memberBlockRepository.existsBetween(viewerId, memberId);
         long stampCount = blocked ? 0 : memberStampQueryService.getStampCount(memberId);
         long publicCourseCount = blocked ? 0 : courseQueryService.countPublicCourses(memberId);
-        return memberConverter.toOtherProfileResponse(member, stampCount, publicCourseCount);
+        return memberConverter.toOtherProfileResponse(member, stampCount, publicCourseCount, blocked);
     }
 }

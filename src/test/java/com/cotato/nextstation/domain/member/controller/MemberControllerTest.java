@@ -184,7 +184,7 @@ class MemberControllerTest {
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
         given(memberQueryService.getMemberProfile(1L, 2L))
                 .willReturn(new OtherMemberProfileResponse(
-                        2L, "환승러2", "https://cdn.example.com/profile/2.png", 12L, 5L));
+                        2L, "환승러2", "https://cdn.example.com/profile/2.png", 12L, 5L, false));
 
         // when & then
         mockMvc.perform(get("/api/v1/members/2/profile")

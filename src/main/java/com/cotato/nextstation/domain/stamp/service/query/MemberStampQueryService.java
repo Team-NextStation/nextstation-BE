@@ -98,7 +98,9 @@ public class MemberStampQueryService {
      * 없는 역은 맨 뒤. 동일 호선 내에서는 역명 가나다순으로 2차 정렬한다.
      * <p>
      * 프로필 조회와 달리 독립된 API라 여기서 직접 회원 존재를 검증한다.
-     * viewerId와 memberId 사이에 어느 방향으로든 차단 관계가 있으면 빈 목록을 반환한다.
+     * viewerId와 memberId 사이에 어느 방향으로든 차단 관계가 있으면 빈 목록을 반환한다. 차단 여부
+     * 안내는 프로필 카드(OtherMemberProfileResponse.blocked)에서만 노출하고, 탭은 빈 상태와
+     * 동일한 화면을 그린다.
      */
     public MemberStampListResponse getMemberStamps(Long viewerId, Long memberId) {
         if (!memberExistenceQueryService.existsMember(memberId)) {

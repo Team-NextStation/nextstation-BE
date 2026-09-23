@@ -141,12 +141,12 @@ class MemberQueryServiceTest {
         // given
         Member member = activeMember();
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
-                1L, "환승러", "https://cdn.example.com/profile/1.png", 12L, 5L);
+                1L, "환승러", "https://cdn.example.com/profile/1.png", 12L, 5L, false);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
         given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(false);
         given(memberStampQueryService.getStampCount(1L)).willReturn(12L);
         given(courseQueryService.countPublicCourses(1L)).willReturn(5L);
-        given(memberConverter.toOtherProfileResponse(member, 12L, 5L)).willReturn(expected);
+        given(memberConverter.toOtherProfileResponse(member, 12L, 5L, false)).willReturn(expected);
 
         // when
         OtherMemberProfileResponse response = memberQueryService.getMemberProfile(2L, 1L);
@@ -156,21 +156,23 @@ class MemberQueryServiceTest {
     }
 
     @Test
-    @DisplayName("차단한 회원의 프로필을 조회하면 스탬프/공개 코스 개수를 0으로 응답한다")
+    @DisplayName("차단한 회원의 프로필을 조회하면 스탬프/공개 코스 개수는 0, blocked는 true로 응답한다")
     void getMemberProfile_blocked_countsAreZero() {
-        // given: 프로필(닉네임/이미지) 자체는 그대로 노출하되 개수만 0으로 내려간다
+        // given: 프로필(닉네임/이미지) 자체는 그대로 노출하되 개수는 0, blocked는 true로 내려간다.
+        // 프론트는 이 blocked 값으로 "내가 차단한 사용자예요" 안내를 프로필 카드에 표시한다.
         Member member = activeMember();
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
-                1L, "환승러", "https://cdn.example.com/profile/1.png", 0L, 0L);
+                1L, "환승러", "https://cdn.example.com/profile/1.png", 0L, 0L, true);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
         given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(true);
-        given(memberConverter.toOtherProfileResponse(member, 0L, 0L)).willReturn(expected);
+        given(memberConverter.toOtherProfileResponse(member, 0L, 0L, true)).willReturn(expected);
 
         // when
         OtherMemberProfileResponse response = memberQueryService.getMemberProfile(2L, 1L);
 
         // then
         assertThat(response).isEqualTo(expected);
+        assertThat(response.blocked()).isTrue();
         verify(memberStampQueryService, never()).getStampCount(any());
         verify(courseQueryService, never()).countPublicCourses(any());
     }
