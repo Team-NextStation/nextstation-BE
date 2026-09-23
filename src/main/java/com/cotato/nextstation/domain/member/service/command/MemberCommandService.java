@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.member.service.command;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
@@ -35,6 +36,7 @@ public class MemberCommandService {
     private final CourseRepository courseRepository;
     private final PlaceReviewRepository placeReviewRepository;
     private final ImageCommandService imageCommandService;
+    private final MemberBlockRepository memberBlockRepository;
 
     // nickname/profileImageUrl 중 요청에 넘어온 필드만 부분 수정한다 (null이면 미변경, profileImageUrl은 빈 문자열이면 제거)
     @Transactional
@@ -148,6 +150,10 @@ public class MemberCommandService {
         // 않도록 여기서 즉시 감소시킨다. 유예 기간 내 복구되면 restore()에서 되돌린다.
         courseRepository.decreaseLikeCountForLikesByMember(memberId);
         placeReviewRepository.decrementLikeCountForLikesByMember(memberId);
+
+        // 탈퇴하면 이 회원이 걸었던 차단, 이 회원을 향한 차단 모두 해제한다. 좋아요 수와 달리
+        // 유예 기간 내 복구되어도 되돌리지 않는다(차단 관계는 복구 대상이 아니다).
+        memberBlockRepository.deleteByBlockerIdOrBlockedId(memberId, memberId);
 
         log.info("회원 탈퇴 처리 완료: memberId={}, previousStatus={}", memberId, previousStatus);
     }
