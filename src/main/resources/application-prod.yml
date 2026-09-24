@@ -34,6 +34,10 @@ report:
   discord:
     webhook-url: ${DISCORD_REPORT_WEBHOOK_URL}
 
+moderation:
+  discord:
+    webhook-url: ${DISCORD_MODERATION_WEBHOOK_URL}
+
 jwt:
   secret: ${JWT_SECRET}
 
