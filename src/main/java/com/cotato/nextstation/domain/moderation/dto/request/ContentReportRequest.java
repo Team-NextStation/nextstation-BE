@@ -20,9 +20,15 @@ public record ContentReportRequest(
         Long targetId,
 
         @Schema(
-                description = "신고 사유", example = "SPAM_AD",
+                description = """
+                        신고 사유. 대상 종류에 따라 사용할 수 있는 값이 다르다.
+                        - 공통: ABUSIVE_CONTENT, SPAM_AD
+                        - JOURNAL, PLACE_REVIEW 전용: HATE_OR_OFFENSIVE, IRRELEVANT
+                        - PROFILE 전용: IMPERSONATION, INAPPROPRIATE_PROFILE
+                        """,
+                example = "SPAM_AD",
                 allowableValues = {"ABUSIVE_CONTENT", "SPAM_AD", "HATE_OR_OFFENSIVE",
-                        "IRRELEVANT", "ETC"}
+                        "IRRELEVANT", "IMPERSONATION", "INAPPROPRIATE_PROFILE"}
         )
         @NotNull(message = "신고 사유는 필수입니다.")
         ReportReason reason
