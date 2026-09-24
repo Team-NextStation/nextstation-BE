@@ -143,6 +143,7 @@ class MemberQueryServiceTest {
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
                 1L, "환승러", "https://cdn.example.com/profile/1.png", 12L, 5L, false);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(false);
         given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(false);
         given(memberStampQueryService.getStampCount(1L)).willReturn(12L);
         given(courseQueryService.countPublicCourses(1L)).willReturn(5L);
@@ -156,14 +157,15 @@ class MemberQueryServiceTest {
     }
 
     @Test
-    @DisplayName("차단한 회원의 프로필을 조회하면 스탬프/공개 코스 개수는 0, blocked는 true로 응답한다")
-    void getMemberProfile_blocked_countsAreZero() {
+    @DisplayName("내가 차단한 회원의 프로필을 조회하면 스탬프/공개 코스 개수는 0, blocked는 true로 응답한다")
+    void getMemberProfile_blockedByMe_countsAreZero() {
         // given: 프로필(닉네임/이미지) 자체는 그대로 노출하되 개수는 0, blocked는 true로 내려간다.
         // 프론트는 이 blocked 값으로 "내가 차단한 사용자예요" 안내를 프로필 카드에 표시한다.
         Member member = activeMember();
         OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
                 1L, "환승러", "https://cdn.example.com/profile/1.png", 0L, 0L, true);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(true);
         given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(true);
         given(memberConverter.toOtherProfileResponse(member, 0L, 0L, true)).willReturn(expected);
 
@@ -173,6 +175,28 @@ class MemberQueryServiceTest {
         // then
         assertThat(response).isEqualTo(expected);
         assertThat(response.blocked()).isTrue();
+        verify(memberStampQueryService, never()).getStampCount(any());
+        verify(courseQueryService, never()).countPublicCourses(any());
+    }
+
+    @Test
+    @DisplayName("상대가 나를 차단한 경우 콘텐츠는 숨기되 blocked는 false로 응답한다(상대가 눈치채지 못하게)")
+    void getMemberProfile_blockedByOther_hidesContentButNotFlag() {
+        // given: 내가 상대를 차단한 게 아니라 상대가 나를 차단한 상황. blocked를 true로 내려주면
+        // 상대는 자신이 나를 차단했다는 사실을 내 화면을 통해 역으로 알 수 있게 되므로 false로 유지한다.
+        Member member = activeMember();
+        OtherMemberProfileResponse expected = new OtherMemberProfileResponse(
+                1L, "환승러", "https://cdn.example.com/profile/1.png", 0L, 0L, false);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(memberBlockRepository.existsByBlockerIdAndBlockedId(2L, 1L)).willReturn(false);
+        given(memberBlockRepository.existsBetween(2L, 1L)).willReturn(true);
+        given(memberConverter.toOtherProfileResponse(member, 0L, 0L, false)).willReturn(expected);
+
+        // when
+        OtherMemberProfileResponse response = memberQueryService.getMemberProfile(2L, 1L);
+
+        // then
+        assertThat(response.blocked()).isFalse();
         verify(memberStampQueryService, never()).getStampCount(any());
         verify(courseQueryService, never()).countPublicCourses(any());
     }

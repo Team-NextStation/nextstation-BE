@@ -63,6 +63,11 @@ public class MemberQueryService {
     // 각 탭이 빈 목록을 반환하는 것과 일관되게 0으로 응답한다. "내가 차단한 사용자예요" 안내는
     // 프론트가 blocked 필드를 보고 이 화면(프로필 카드)에서만 표시한다 - 탭은 빈 상태와 동일하게
     // 그리므로 스탬프/코스 API에는 별도 신호를 넣지 않는다.
+    //
+    // blocked는 반드시 "내가 상대를 차단했는지" 단방향으로만 판단한다. 상대가 나를 차단한
+    // 경우까지 true로 내려버리면, 상대 입장에서 "내가 이 사람을 차단당했구나"를 눈치챌 수 있다.
+    // 그 경우엔 blocked=false로 내려주되, 콘텐츠는 여전히 양방향 기준(hiddenByBlock)으로 숨겨서
+    // 스탬프/여행일지가 그냥 없는 것처럼 자연스럽게 보이게 한다.
     public OtherMemberProfileResponse getMemberProfile(Long viewerId, Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .filter(m -> m.getStatus() != MemberStatus.WITHDRAWN)
@@ -73,9 +78,10 @@ public class MemberQueryService {
                     return new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
                 });
 
-        boolean blocked = memberBlockRepository.existsBetween(viewerId, memberId);
-        long stampCount = blocked ? 0 : memberStampQueryService.getStampCount(memberId);
-        long publicCourseCount = blocked ? 0 : courseQueryService.countPublicCourses(memberId);
-        return memberConverter.toOtherProfileResponse(member, stampCount, publicCourseCount, blocked);
+        boolean blockedByMe = memberBlockRepository.existsByBlockerIdAndBlockedId(viewerId, memberId);
+        boolean hiddenByBlock = memberBlockRepository.existsBetween(viewerId, memberId);
+        long stampCount = hiddenByBlock ? 0 : memberStampQueryService.getStampCount(memberId);
+        long publicCourseCount = hiddenByBlock ? 0 : courseQueryService.countPublicCourses(memberId);
+        return memberConverter.toOtherProfileResponse(member, stampCount, publicCourseCount, blockedByMe);
     }
 }
