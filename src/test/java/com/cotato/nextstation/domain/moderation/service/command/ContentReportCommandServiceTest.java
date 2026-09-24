@@ -122,6 +122,35 @@ class ContentReportCommandServiceTest {
     }
 
     @Test
+    @DisplayName("프로필 전용 사유로 프로필을 신고할 수 있다")
+    void report_profileOnlyReason() {
+        // given
+        given(memberRepository.findReportTargetById(TARGET_ID))
+                .willReturn(Optional.of(new ReportTarget(TARGET_ID, "민성")));
+        givenSavedWithId();
+
+        // when
+        ContentReportResponse response = contentReportCommandService.report(
+                REPORTER_ID, request(ReportTargetType.PROFILE, ReportReason.IMPERSONATION));
+
+        // then
+        assertThat(response.reportId()).isEqualTo(SAVED_REPORT_ID);
+    }
+
+    @Test
+    @DisplayName("대상에 맞지 않는 사유로 신고하면 대상 조회 전에 예외가 발생한다")
+    void report_reasonNotSupported() {
+        // when & then
+        assertThatThrownBy(() -> contentReportCommandService.report(
+                REPORTER_ID, request(ReportTargetType.JOURNAL, ReportReason.IMPERSONATION)))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ReportErrorCode.REPORT_REASON_NOT_SUPPORTED.getMessage());
+
+        then(journalRepository).should(never()).findReportTargetById(any());
+        then(contentReportRepository).should(never()).save(any());
+    }
+
+    @Test
     @DisplayName("본인 프로필은 신고할 수 없다")
     void report_selfProfile() {
         // given

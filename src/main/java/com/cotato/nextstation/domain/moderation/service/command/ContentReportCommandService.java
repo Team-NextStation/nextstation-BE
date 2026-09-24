@@ -39,6 +39,11 @@ public class ContentReportCommandService {
         log.info("콘텐츠 신고 접수 요청: reporterId={}, targetType={}, targetId={}, reason={}",
                 reporterId, targetType, targetId, request.reason());
 
+        if (!request.reason().supports(targetType)) {
+            log.warn("대상에 맞지 않는 신고 사유: targetType={}, reason={}", targetType, request.reason());
+            throw new CustomException(ReportErrorCode.REPORT_REASON_NOT_SUPPORTED);
+        }
+
         ReportTarget target = findTarget(targetType, targetId);
         if (target.authorId().equals(reporterId)) {
             log.warn("본인 대상 신고 차단: reporterId={}, targetType={}, targetId={}",
