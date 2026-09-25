@@ -49,8 +49,9 @@ public class WithdrawnMemberPurger {
             "DELETE FROM member_social_account WHERE member_id IN (:ids)",
             "DELETE FROM email_verification WHERE member_id IN (:ids)",
             "DELETE FROM recommendation_log WHERE member_id IN (:ids)",
-            // 탈퇴 시점에 본인이 걸었던/받았던 차단은 이미 지워졌지만, 유예 기간 중 다른 회원이
-            // 새로 차단을 걸었을 수 있어(existsById만 보고 status는 확인하지 않음) 여기서도 정리한다.
+            // 차단 관계는 탈퇴 시점이 아니라 여기, 실제 파기 시점에만 지운다. 유예 기간 중엔
+            // NOT_WITHDRAWN이 콘텐츠를 이미 가려주므로 차단 행이 남아있어도 영향이 없고,
+            // 덕분에 유예 기간 내 복구되면 되돌리는 로직 없이도 차단이 그대로 유지된다.
             "DELETE FROM member_block WHERE blocker_id IN (:ids) OR blocked_id IN (:ids)",
             "DELETE FROM member WHERE id IN (:ids)"
     );

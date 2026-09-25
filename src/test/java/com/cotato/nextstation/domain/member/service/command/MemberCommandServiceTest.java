@@ -1,6 +1,5 @@
 package com.cotato.nextstation.domain.member.service.command;
 
-import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
@@ -66,9 +65,6 @@ class MemberCommandServiceTest {
 
     @Mock
     private PlaceReviewRepository placeReviewRepository;
-
-    @Mock
-    private MemberBlockRepository memberBlockRepository;
 
     private static final Long MEMBER_ID = 1L;
     private static final String OLD_IMAGE_URL =
@@ -246,8 +242,6 @@ class MemberCommandServiceTest {
         // 이 회원이 남의 코스/리뷰에 남겨둔 좋아요가 like_count에서 즉시 빠져야 한다
         verify(courseRepository).decreaseLikeCountForLikesByMember(1L);
         verify(placeReviewRepository).decrementLikeCountForLikesByMember(1L);
-        // 이 회원이 걸었던 차단, 이 회원을 향한 차단이 모두 해제되어야 한다
-        verify(memberBlockRepository).deleteByBlockerIdOrBlockedId(1L, 1L);
     }
 
     @Test

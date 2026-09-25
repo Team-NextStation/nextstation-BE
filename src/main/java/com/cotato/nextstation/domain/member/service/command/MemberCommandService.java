@@ -1,6 +1,5 @@
 package com.cotato.nextstation.domain.member.service.command;
 
-import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.converter.MemberConverter;
@@ -36,7 +35,6 @@ public class MemberCommandService {
     private final CourseRepository courseRepository;
     private final PlaceReviewRepository placeReviewRepository;
     private final ImageCommandService imageCommandService;
-    private final MemberBlockRepository memberBlockRepository;
 
     // nickname/profileImageUrl 중 요청에 넘어온 필드만 부분 수정한다 (null이면 미변경, profileImageUrl은 빈 문자열이면 제거)
     @Transactional
@@ -151,9 +149,10 @@ public class MemberCommandService {
         courseRepository.decreaseLikeCountForLikesByMember(memberId);
         placeReviewRepository.decrementLikeCountForLikesByMember(memberId);
 
-        // 탈퇴하면 이 회원이 걸었던 차단, 이 회원을 향한 차단 모두 해제한다. 좋아요 수와 달리
-        // 유예 기간 내 복구되어도 되돌리지 않는다(차단 관계는 복구 대상이 아니다).
-        memberBlockRepository.deleteByBlockerIdOrBlockedId(memberId, memberId);
+        // 차단 관계는 여기서 건드리지 않는다. 유예 기간 중엔 NOT_WITHDRAWN이 이미 콘텐츠를
+        // 전부 가려주므로 차단 행이 남아있어도 영향이 없고, 덕분에 복구 시 되돌리는 로직 없이도
+        // 차단이 자연스럽게 그대로 유지된다. 실제 삭제는 유예 기간이 지나 파기될 때
+        // WithdrawnMemberPurger가 처리한다.
 
         log.info("회원 탈퇴 처리 완료: memberId={}, previousStatus={}", memberId, previousStatus);
     }
