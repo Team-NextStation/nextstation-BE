@@ -33,7 +33,7 @@ public class ExploreQueryService {
         List<ExploreCourseResponse> popularCourses =
                 courseQueryService.getMostLikedCourses(memberId, null, POPULAR_COURSE_COUNT).courses();
 
-        List<ConceptTourResponse> conceptTours = conceptTourQueryService.getConceptTours().stream()
+        List<ConceptTourResponse> conceptTours = conceptTourQueryService.getConceptTours(memberId).stream()
                 .limit(CONCEPT_TOUR_COUNT)
                 .toList();
 

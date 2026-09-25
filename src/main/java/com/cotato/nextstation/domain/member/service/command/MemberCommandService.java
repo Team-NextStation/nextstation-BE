@@ -149,6 +149,11 @@ public class MemberCommandService {
         courseRepository.decreaseLikeCountForLikesByMember(memberId);
         placeReviewRepository.decrementLikeCountForLikesByMember(memberId);
 
+        // 차단 관계는 여기서 건드리지 않는다. 유예 기간 중엔 NOT_WITHDRAWN이 이미 콘텐츠를
+        // 전부 가려주므로 차단 행이 남아있어도 영향이 없고, 덕분에 복구 시 되돌리는 로직 없이도
+        // 차단이 자연스럽게 그대로 유지된다. 실제 삭제는 유예 기간이 지나 파기될 때
+        // WithdrawnMemberPurger가 처리한다.
+
         log.info("회원 탈퇴 처리 완료: memberId={}, previousStatus={}", memberId, previousStatus);
     }
 

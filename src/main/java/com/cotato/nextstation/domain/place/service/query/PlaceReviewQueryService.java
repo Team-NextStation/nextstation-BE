@@ -42,13 +42,13 @@ public class PlaceReviewQueryService {
 
         Pageable pageable = PageRequest.of(0, pageSize + 1); // hasNext 판단용 1개 더 조회
 
-        List<PlaceReview> reviews = fetchReviews(placeId, sort, cursor, pageable);
+        List<PlaceReview> reviews = fetchReviews(placeId, sort, cursor, pageable, memberId);
 
         boolean hasNext = reviews.size() > pageSize;
         List<PlaceReview> pageContent = hasNext ? reviews.subList(0, pageSize) : reviews;
 
         // 최초 조회(cursor 없음)일 때만 totalCount 계산
-        Long totalCount = (cursor == null) ? placeReviewRepository.countByPlaceId(placeId) : null;
+        Long totalCount = (cursor == null) ? placeReviewRepository.countByPlaceId(placeId, memberId) : null;
 
         Set<Long> likedReviewIds = resolveLikedReviewIds(memberId, pageContent);
         Map<Long, List<String>> imagesByReviewId = placeReviewConverter.resolveImagesByReviewId(pageContent);
@@ -58,13 +58,13 @@ public class PlaceReviewQueryService {
         return placeReviewConverter.toListResponse(totalCount, pageContent, imagesByReviewId, likedReviewIds, nextCursor, hasNext);
     }
 
-    private List<PlaceReview> fetchReviews(Long placeId, PlaceReviewSortType sort, String cursor, Pageable pageable) {
+    private List<PlaceReview> fetchReviews(Long placeId, PlaceReviewSortType sort, String cursor, Pageable pageable, Long memberId) {
         CursorData cursorData = CursorData.decode(cursor);
 
         if (cursorData == null) {
             return switch (sort) {
-                case RECOMMEND -> placeReviewRepository.findByPlaceIdOrderByRecommend(placeId, pageable);
-                case LATEST -> placeReviewRepository.findByPlaceIdOrderByLatest(placeId, pageable);
+                case RECOMMEND -> placeReviewRepository.findByPlaceIdOrderByRecommend(placeId, memberId, pageable);
+                case LATEST -> placeReviewRepository.findByPlaceIdOrderByLatest(placeId, memberId, pageable);
             };
         }
 
@@ -73,9 +73,9 @@ public class PlaceReviewQueryService {
 
         return switch (sort) {
             case RECOMMEND -> placeReviewRepository.findByPlaceIdOrderByRecommendAfterCursor(
-                    placeId, cursorData.longValue(), cursorData.id(), pageable);
+                    placeId, cursorData.longValue(), cursorData.id(), memberId, pageable);
             case LATEST -> placeReviewRepository.findByPlaceIdOrderByLatestAfterCursor(
-                    placeId, cursorData.dateTimeValue(), cursorData.id(), pageable);
+                    placeId, cursorData.dateTimeValue(), cursorData.id(), memberId, pageable);
         };
     }
 

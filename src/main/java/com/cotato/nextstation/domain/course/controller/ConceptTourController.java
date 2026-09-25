@@ -39,7 +39,7 @@ public class ConceptTourController {
                     둘러보기의 "컨셉별 투어"에 쓴다. 관리자가 정한 표시 순서대로 전부 내려준다.
                     - 컨셉이 여덟 개 남짓이라 **페이징하지 않는다.**
                     - 화면의 검색창은 이 목록을 받아 프론트에서 걸러내면 된다. 서버는 검색어를 받지 않는다.
-                    - `courseCount`는 목록에 실제로 보이는 것과 같도록 **공개된 코스만** 센다.
+                    - `courseCount`는 목록에 실제로 보이는 것과 같도록 **공개된 코스 중 뷰어와 차단 관계가 아닌 작성자의 코스만** 센다.
                     - 로그인 없이도 조회할 수 있다.
                     - accessToken을 보냈는데 만료되었거나 위변조된 경우는 401이다.
                     """
@@ -51,9 +51,10 @@ public class ConceptTourController {
     })
     @GetMapping
     public CommonResponse<List<ConceptTourResponse>> getConceptTours(
-            // 개인화 데이터는 없지만, 토큰을 보낸 요청은 다른 둘러보기 조회와 같이 검증한다.
+            // courseCount에서 차단 관계인 작성자의 코스를 빼기 위해 뷰어 식별자로 쓴다.
             @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal) {
-        return CommonResponse.success(conceptTourQueryService.getConceptTours());
+        Long memberId = principal != null ? principal.memberId() : null;
+        return CommonResponse.success(conceptTourQueryService.getConceptTours(memberId));
     }
 
     @Operation(

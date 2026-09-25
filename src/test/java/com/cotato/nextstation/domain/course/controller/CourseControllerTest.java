@@ -366,7 +366,7 @@ class CourseControllerTest {
     @Test
     @DisplayName("내 코스로 만들기 화면 조회는 200과 코스 구성/장소 설명을 반환한다")
     void getCourseCopyPreview_success() throws Exception {
-        given(courseQueryService.getCourseCopyPreview(7L)).willReturn(
+        given(courseQueryService.getCourseCopyPreview(1L, 7L)).willReturn(
                 new CourseCopyPreviewResponse(7L, "보문역 환승여행 코스", 123L, "보문역",
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6),
                         List.of(new CoursePlaceDetailResponse(11L, "보문숲길도서관",
@@ -390,7 +390,7 @@ class CourseControllerTest {
     @Test
     @DisplayName("공개되지 않은 코스의 내 코스로 만들기 화면을 조회하면 404를 반환한다")
     void getCourseCopyPreview_notPublic() throws Exception {
-        given(courseQueryService.getCourseCopyPreview(7L))
+        given(courseQueryService.getCourseCopyPreview(1L, 7L))
                 .willThrow(new CustomException(CourseErrorCode.COURSE_NOT_FOUND));
 
         mockMvc.perform(get("/api/v1/courses/{courseId}/copy-preview", 7L)

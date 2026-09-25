@@ -51,7 +51,7 @@ class PlaceQueryServiceTest {
         given(placeRepository.findById(placeId)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> placeQueryService.getPlaceDetail(placeId))
+        assertThatThrownBy(() -> placeQueryService.getPlaceDetail(placeId, null))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(PlaceErrorCode.PLACE_NOT_FOUND.getMessage());
     }
@@ -64,13 +64,13 @@ class PlaceQueryServiceTest {
         Place place = mock(Place.class);
         given(placeRepository.findById(placeId)).willReturn(Optional.of(place));
         given(placeImageRepository.findByPlaceOrderBySortOrderAsc(place)).willReturn(List.of());
-        given(placeReviewRepository.findVisibleReviewsByPlaceId(placeId, PageRequest.of(0, 3))).willReturn(List.of());
+        given(placeReviewRepository.findVisibleReviewsByPlaceId(placeId, null, PageRequest.of(0, 3))).willReturn(List.of());
         given(placeConverter.toDetailResponse(place, 0L, List.of(), List.of(), List.of()))
                 .willReturn(new PlaceDetailResponse(placeId, "보문골한옥집", "설명", "식당", "주소", "02-1234-5678",
                         "http://place.map.kakao.com/12345", 0L, List.of(), List.of()));
 
         // when
-        PlaceDetailResponse response = placeQueryService.getPlaceDetail(placeId);
+        PlaceDetailResponse response = placeQueryService.getPlaceDetail(placeId, null);
 
         // then
         assertThat(response.placeId()).isEqualTo(placeId);

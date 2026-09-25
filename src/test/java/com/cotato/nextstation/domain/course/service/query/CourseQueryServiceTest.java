@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.course.service.query;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.course.converter.CourseConverter;
 import com.cotato.nextstation.domain.course.dto.request.ExploreCourseCondition;
 import com.cotato.nextstation.domain.course.dto.response.CourseInfoResponse;
@@ -100,6 +101,9 @@ class CourseQueryServiceTest {
     private MemberExistenceQueryService memberExistenceQueryService;
 
     @Mock
+    private MemberBlockRepository memberBlockRepository;
+
+    @Mock
     private CourseConverter courseConverter;
 
     private Course course(String name) {
@@ -123,28 +127,44 @@ class CourseQueryServiceTest {
     @DisplayName("장소를 포함한 코스는 인기순 상위 6개만 조회한다")
     void getCoursesByPlace_limitsToSix() {
         // given
-        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
-        List<PlaceCourseResponse> result = courseQueryService.getCoursesByPlace(1L);
+        List<PlaceCourseResponse> result = courseQueryService.getCoursesByPlace(1L, 1L);
 
         // then: 더보기가 없는 화면이라 6개 고정으로 요청한다
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(courseRepository).findPopularPublicCoursesByPlaceId(eq(1L), pageableCaptor.capture());
+        verify(courseRepository).findPopularPublicCoursesByPlaceId(eq(1L), any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue()).isEqualTo(PageRequest.of(0, 6));
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("차단 필터용 viewerId가 placeId와 뒤바뀌지 않고 정확히 전달된다")
+    void getCoursesByPlace_passesViewerIdCorrectly() {
+        // given: viewerId와 placeId를 다른 값으로 둬야 둘이 뒤바뀌는 실수를 잡을 수 있다
+        Long viewerId = 9L;
+        Long placeId = 1L;
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(placeId), eq(viewerId), any(Pageable.class)))
+                .willReturn(List.of());
+
+        // when
+        courseQueryService.getCoursesByPlace(viewerId, placeId);
+
+        // then
+        verify(courseRepository).findPopularPublicCoursesByPlaceId(eq(placeId), eq(viewerId), any(Pageable.class));
     }
 
     @Test
     @DisplayName("코스가 없으면 장소 조회를 하지 않고 빈 목록을 반환한다")
     void getCoursesByPlace_noCourses() {
         // given
-        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
-        courseQueryService.getCoursesByPlace(1L);
+        courseQueryService.getCoursesByPlace(1L, 1L);
 
         // then: 빈 id 목록으로 장소·태그를 조회하는 낭비를 막는다
         verify(coursePlaceRepository, never()).findByCourseIdInOrderByCourseIdAscOrderNumAsc(any());
@@ -157,7 +177,7 @@ class CourseQueryServiceTest {
         // given: 10번 코스는 장소 3개, 20번 코스는 장소 2개
         PlaceCourseView view10 = placeCourseView(10L);
         PlaceCourseView view20 = placeCourseView(20L);
-        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(), any(Pageable.class)))
                 .willReturn(List.of(view10, view20));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(
@@ -170,7 +190,7 @@ class CourseQueryServiceTest {
                 .willReturn(List.of("실내위주"));
 
         // when
-        courseQueryService.getCoursesByPlace(1L);
+        courseQueryService.getCoursesByPlace(1L, 1L);
 
         // then
         ArgumentCaptor<Integer> countCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -189,7 +209,7 @@ class CourseQueryServiceTest {
     void getCoursesByPlace_coverImage() {
         // given: 10번 코스의 첫 장소는 order_num이 가장 작은 100번
         PlaceCourseView view10 = placeCourseView(10L);
-        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(), any(Pageable.class)))
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2)));
@@ -198,7 +218,7 @@ class CourseQueryServiceTest {
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
-        courseQueryService.getCoursesByPlace(1L);
+        courseQueryService.getCoursesByPlace(1L, 1L);
 
         // then: 두 번째 장소가 아니라 첫 번째 장소의 이미지를 조회해 넘긴다
         ArgumentCaptor<String> imageCaptor = ArgumentCaptor.forClass(String.class);
@@ -211,7 +231,7 @@ class CourseQueryServiceTest {
     void getCoursesByPlace_usesNextApprovedPlaceImage() {
         // given: 일반 장소 조회는 @SQLRestriction으로 비승인 첫 장소를 반환하지 않는다.
         PlaceCourseView view10 = placeCourseView(10L);
-        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(), any(Pageable.class)))
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1), coursePlace(10L, 101L, 2)));
@@ -220,7 +240,7 @@ class CourseQueryServiceTest {
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
-        courseQueryService.getCoursesByPlace(1L);
+        courseQueryService.getCoursesByPlace(1L, 1L);
 
         // then
         ArgumentCaptor<String> imageCaptor = ArgumentCaptor.forClass(String.class);
@@ -233,7 +253,7 @@ class CourseQueryServiceTest {
     void getCoursesByPlace_noCoverImage() {
         // given: 이미지가 아직 없는 장소 (장소 이미지·카테고리 기본 이미지 모두 없음)
         PlaceCourseView view10 = placeCourseView(10L);
-        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(Pageable.class)))
+        given(courseRepository.findPopularPublicCoursesByPlaceId(eq(1L), any(), any(Pageable.class)))
                 .willReturn(List.of(view10));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any()))
                 .willReturn(List.of(coursePlace(10L, 100L, 1)));
@@ -242,7 +262,7 @@ class CourseQueryServiceTest {
         given(placeInfoQueryService.getTopTagNames(any())).willReturn(List.of());
 
         // when
-        courseQueryService.getCoursesByPlace(1L);
+        courseQueryService.getCoursesByPlace(1L, 1L);
 
         // then
         ArgumentCaptor<String> imageCaptor = ArgumentCaptor.forClass(String.class);
@@ -351,14 +371,14 @@ class CourseQueryServiceTest {
         LocalDateTime likedAt = LocalDateTime.of(2026, 7, 23, 12, 0);
         List<LikedCourseView> views = List.of(
                 likedView(30L, 3L, likedAt), likedView(20L, 2L, likedAt), likedView(10L, 1L, likedAt));
-        given(courseLikeRepository.findLikedCourses(eq(1L), any(Pageable.class))).willReturn(views);
+        given(courseLikeRepository.findLikedCourses(eq(1L), any(), any(Pageable.class))).willReturn(views);
 
         // when
         courseQueryService.getLikedCourses(1L, null, 2);
 
         // then: 조회는 3개(=2+1), 응답에 담기는 건 2개
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(courseLikeRepository).findLikedCourses(eq(1L), pageableCaptor.capture());
+        verify(courseLikeRepository).findLikedCourses(eq(1L), any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue()).isEqualTo(PageRequest.of(0, 3));
 
         ArgumentCaptor<List<LikedCourseView>> contentCaptor = ArgumentCaptor.forClass(List.class);
@@ -378,7 +398,7 @@ class CourseQueryServiceTest {
     void getLikedCourses_lastPage() {
         // given: likedView가 내부에서 스터빙하므로 given(...) 안에서 호출하면 중첩 스터빙이 된다. 미리 만들어 둔다.
         LikedCourseView view = likedView(10L, 1L, LocalDateTime.of(2026, 7, 23, 12, 0));
-        given(courseLikeRepository.findLikedCourses(eq(1L), any(Pageable.class))).willReturn(List.of(view));
+        given(courseLikeRepository.findLikedCourses(eq(1L), any(), any(Pageable.class))).willReturn(List.of(view));
 
         // when
         courseQueryService.getLikedCourses(1L, null, 2);
@@ -393,15 +413,15 @@ class CourseQueryServiceTest {
         // given
         LocalDateTime likedAt = LocalDateTime.of(2026, 7, 23, 12, 0);
         String cursor = new CursorData(20L, null, likedAt).encode();
-        given(courseLikeRepository.findLikedCoursesAfterCursor(eq(1L), eq(likedAt), eq(20L), any(Pageable.class)))
+        given(courseLikeRepository.findLikedCoursesAfterCursor(eq(1L), eq(likedAt), eq(20L), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
         courseQueryService.getLikedCourses(1L, cursor, 2);
 
         // then: 첫 페이지 쿼리는 타지 않는다
-        verify(courseLikeRepository, never()).findLikedCourses(any(), any());
-        verify(courseLikeRepository).findLikedCoursesAfterCursor(eq(1L), eq(likedAt), eq(20L), any(Pageable.class));
+        verify(courseLikeRepository, never()).findLikedCourses(any(), any(), any());
+        verify(courseLikeRepository).findLikedCoursesAfterCursor(eq(1L), eq(likedAt), eq(20L), any(), any(Pageable.class));
     }
 
     @Test
@@ -431,14 +451,14 @@ class CourseQueryServiceTest {
     @DisplayName("size를 생략하면 기본 크기로 조회한다")
     void getLikedCourses_defaultSize() {
         // given
-        given(courseLikeRepository.findLikedCourses(eq(1L), any(Pageable.class))).willReturn(List.of());
+        given(courseLikeRepository.findLikedCourses(eq(1L), any(), any(Pageable.class))).willReturn(List.of());
 
         // when
         courseQueryService.getLikedCourses(1L, null, null);
 
         // then: 기본 10 + hasNext 판단용 1
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(courseLikeRepository).findLikedCourses(eq(1L), pageableCaptor.capture());
+        verify(courseLikeRepository).findLikedCourses(eq(1L), any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue()).isEqualTo(PageRequest.of(0, 11));
     }
 
@@ -582,7 +602,7 @@ class CourseQueryServiceTest {
         List<PopularCourseResponse> responses = List.of(
                 new PopularCourseResponse(1L, "보문역에서 하루", 300, 128, false),
                 new PopularCourseResponse(2L, "성수 코스", 200, 50, false));
-        given(courseRepository.findPopularPublicCoursesByStationId(eq(6L), any(Pageable.class))).willReturn(courses);
+        given(courseRepository.findPopularPublicCoursesByStationId(eq(6L), any(), any(Pageable.class))).willReturn(courses);
         given(courseConverter.toPopularResponses(eq(courses), any())).willReturn(responses);
 
         // when
@@ -591,7 +611,7 @@ class CourseQueryServiceTest {
         // then
         assertThat(result).isEqualTo(responses);
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(courseRepository).findPopularPublicCoursesByStationId(eq(6L), pageableCaptor.capture());
+        verify(courseRepository).findPopularPublicCoursesByStationId(eq(6L), any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue()).isEqualTo(PageRequest.of(0, 3));
     }
 
@@ -661,7 +681,7 @@ class CourseQueryServiceTest {
         // given
         StationView bomun = stationView(123L, "보문역");
         StationView oksu = stationView(232L, "옥수역");
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
         given(courseRepository.findDrawableStations(any())).willReturn(List.of(bomun, oksu));
         given(courseRepository.findStationsWithPublicCourses(any())).willReturn(List.of(oksu));
@@ -683,7 +703,7 @@ class CourseQueryServiceTest {
     @DisplayName("역 필터 목록은 노선만 반영하고 역 필터는 반영하지 않는다")
     void getExploreCourses_availableStationsIgnoresStationFilter() {
         // given: 고른 역으로 좁히면 드롭다운에 그 역만 남아 다른 역으로 바꿀 수 없다
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
         given(courseRepository.findDrawableStations(2L)).willReturn(List.of());
         given(courseRepository.findStationsWithPublicCourses(2L)).willReturn(List.of());
@@ -706,7 +726,7 @@ class CourseQueryServiceTest {
         ExploreCourseView withoutImage = exploreView(2L, now, 0, 0);
         lenient().when(withImage.getJournalId()).thenReturn(11L);
         lenient().when(withoutImage.getJournalId()).thenReturn(12L);
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of(withImage, withoutImage));
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any())).willReturn(List.of());
         given(placeInfoQueryService.getTagNamesByPlace(any())).willReturn(Map.of());
@@ -730,7 +750,7 @@ class CourseQueryServiceTest {
     @DisplayName("검색 요청에는 역 필터 목록을 계산하지 않는다")
     void getExploreCourses_noStationsWhenSearching() {
         // given: 검색 결과 화면에는 "역 선택"이 없어 후보 역 50개를 실어 보낼 이유가 없다
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -747,7 +767,7 @@ class CourseQueryServiceTest {
     void getExploreCourses_availableStationsOnlyOnFirstPage() {
         // given: 드롭다운은 화면에 한 번만 그리므로 다음 페이지에서는 조회하지 않는다
         String cursor = new CursorData(1L, null, LocalDateTime.now()).encode();
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -774,7 +794,7 @@ class CourseQueryServiceTest {
     @DisplayName("둘러보기 메인의 노선 코스는 역 목록을 조회하지 않는다")
     void getLineCourses_noAvailableStations() {
         // given: 메인 화면에는 역 선택이 없어 계산해도 응답에 담기지 않는다
-        given(courseRepository.findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
         given(courseConverter.toExploreListResponse(any(), any(), any(), any(), anyBoolean()))
                 .willReturn(new ExploreCourseListResponse(List.of(), List.of(), null, false));
@@ -791,7 +811,7 @@ class CourseQueryServiceTest {
     @DisplayName("둘러보기 메인의 노선 코스는 목록 API와 같은 기본 정렬(인기순)로 조회한다")
     void getLineCourses_usesDefaultSort() {
         // given: 여기만 정렬이 다르면 더보기로 넘어갔을 때 미리보기의 코스가 사라진 것처럼 보인다
-        given(courseRepository.findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
         given(courseConverter.toExploreListResponse(any(), any(), any(), any(), anyBoolean()))
                 .willReturn(new ExploreCourseListResponse(List.of(), List.of(), null, false));
@@ -801,16 +821,16 @@ class CourseQueryServiceTest {
 
         // then
         verify(courseRepository)
-                .findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
         verify(courseRepository, never())
-                .findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
     @DisplayName("컨셉별 코스 목록은 역 선택 드롭다운이 없어 역 목록을 조회하지 않는다")
     void getConceptTourCourses_noAvailableStations() {
         // given: 컨셉 상세에는 정렬 토글만 있어 후보 역 50개를 실어 보낼 이유가 없다
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -825,7 +845,7 @@ class CourseQueryServiceTest {
     @DisplayName("컨셉별 코스 목록은 컨셉 id를 조회 조건으로 넘긴다")
     void getConceptTourCourses_passesConceptTourId() {
         // given
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), eq(7L), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), eq(7L), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -833,14 +853,14 @@ class CourseQueryServiceTest {
 
         // then
         verify(courseRepository)
-                .findExploreCoursesByLatest(isNull(), isNull(), isNull(), eq(7L), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(isNull(), isNull(), isNull(), eq(7L), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
     @DisplayName("많이 찾는 코스는 역 선택 드롭다운이 없어 역 목록을 조회하지 않는다")
     void getMostLikedCourses_noAvailableStations() {
         // given
-        given(courseRepository.findMostLikedCourses(any(Pageable.class))).willReturn(List.of());
+        given(courseRepository.findMostLikedCourses(any(), any(Pageable.class))).willReturn(List.of());
 
         // when
         courseQueryService.getMostLikedCourses(null, null, null);
@@ -853,7 +873,7 @@ class CourseQueryServiceTest {
     @DisplayName("정렬을 생략하면 인기순으로 조회한다")
     void getExploreCourses_defaultsToPopular() {
         // given
-        given(courseRepository.findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -862,16 +882,16 @@ class CourseQueryServiceTest {
 
         // then: 정렬이 없으면 페이지마다 순서가 흔들려 커서 페이징이 성립하지 않는다
         verify(courseRepository)
-                .findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByPopular(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
         verify(courseRepository, never())
-                .findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
     @DisplayName("검색어의 꼬리 \"역\"은 떼고 조회한다")
     void getExploreCourses_normalizesKeyword() {
         // given: 역명은 쿼리에서 꼬리를 떼고 비교하므로 검색어도 같은 규칙으로 맞춰야 걸린다
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), eq("왕십리"), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), eq("왕십리"), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -880,14 +900,14 @@ class CourseQueryServiceTest {
 
         // then
         verify(courseRepository)
-                .findExploreCoursesByLatest(any(), any(), eq("왕십리"), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(any(), any(), eq("왕십리"), any(), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
     @DisplayName("검색어의 LIKE 와일드카드는 이스케이프해서 문자 그대로 찾는다")
     void getExploreCourses_escapesLikeWildcards() {
         // given: 이스케이프하지 않으면 "%" 한 글자로 공개 코스 전체가 조회된다
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), eq("!%50!_"), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), eq("!%50!_"), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -896,14 +916,14 @@ class CourseQueryServiceTest {
 
         // then
         verify(courseRepository)
-                .findExploreCoursesByLatest(any(), any(), eq("!%50!_"), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(any(), any(), eq("!%50!_"), any(), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
     @DisplayName("이스케이프 문자 자체가 검색어에 있으면 두 번 겹쳐 문자로 취급한다")
     void getExploreCourses_escapesEscapeCharacter() {
         // given
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), eq("!!느낌표"), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), eq("!!느낌표"), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -912,14 +932,14 @@ class CourseQueryServiceTest {
 
         // then
         verify(courseRepository)
-                .findExploreCoursesByLatest(any(), any(), eq("!!느낌표"), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(any(), any(), eq("!!느낌표"), any(), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
     @DisplayName("빈 검색어는 조건에서 빼고 전체를 조회한다")
     void getExploreCourses_blankKeyword() {
         // given
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), isNull(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), isNull(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(List.of());
 
         // when
@@ -928,7 +948,7 @@ class CourseQueryServiceTest {
 
         // then
         verify(courseRepository)
-                .findExploreCoursesByLatest(any(), any(), isNull(), any(), any(), any(), any(Pageable.class));
+                .findExploreCoursesByLatest(any(), any(), isNull(), any(), any(), any(), any(), any(Pageable.class));
     }
 
     @Test
@@ -941,7 +961,7 @@ class CourseQueryServiceTest {
                 exploreView(1L, now, 2_000_000_000, 1_000_000_000),
                 exploreView(2L, now, 0, 0));
         given(courseRepository.findExploreCoursesByPopular(
-                any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+                any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(found);
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any())).willReturn(List.of());
         given(placeInfoQueryService.getTagNamesByPlace(any())).willReturn(Map.of());
@@ -964,7 +984,7 @@ class CourseQueryServiceTest {
         LocalDateTime now = LocalDateTime.now();
         List<ExploreCourseView> found =
                 List.of(exploreView(1L, now, 0, 0), exploreView(2L, now, 0, 0), exploreView(3L, now, 0, 0));
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(found);
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any())).willReturn(List.of());
         given(placeInfoQueryService.getTagNamesByPlace(any())).willReturn(Map.of());
@@ -1000,7 +1020,7 @@ class CourseQueryServiceTest {
     void getExploreCourses_anonymousHasNoLikes() {
         // given
         List<ExploreCourseView> found = List.of(exploreView(1L, LocalDateTime.now(), 0, 0));
-        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+        given(courseRepository.findExploreCoursesByLatest(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                 .willReturn(found);
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any())).willReturn(List.of());
         given(placeInfoQueryService.getTagNamesByPlace(any())).willReturn(Map.of());
@@ -1019,14 +1039,14 @@ class CourseQueryServiceTest {
     @DisplayName("많이 찾는 코스는 상위 30개까지만 조회한다")
     void getMostLikedCourses_limitedTo30() {
         // given
-        given(courseRepository.findMostLikedCourses(any(Pageable.class))).willReturn(List.of());
+        given(courseRepository.findMostLikedCourses(any(), any(Pageable.class))).willReturn(List.of());
 
         // when
         courseQueryService.getMostLikedCourses(null, null, null);
 
         // then: 무한스크롤도 30번째에서 끝난다
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(courseRepository).findMostLikedCourses(pageableCaptor.capture());
+        verify(courseRepository).findMostLikedCourses(any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(30);
     }
 
@@ -1037,7 +1057,7 @@ class CourseQueryServiceTest {
         LocalDateTime now = LocalDateTime.now();
         List<ExploreCourseView> found =
                 List.of(exploreView(1L, now, 0, 9), exploreView(2L, now, 0, 6), exploreView(3L, now, 0, 3));
-        given(courseRepository.findMostLikedCourses(any(Pageable.class))).willReturn(found);
+        given(courseRepository.findMostLikedCourses(any(), any(Pageable.class))).willReturn(found);
         given(coursePlaceRepository.findByCourseIdInOrderByCourseIdAscOrderNumAsc(any())).willReturn(List.of());
         given(placeInfoQueryService.getTagNamesByPlace(any())).willReturn(Map.of());
 
@@ -1055,7 +1075,7 @@ class CourseQueryServiceTest {
     void getMostLikedCourses_cursorBeyondEnd() {
         // given: 사이에 코스가 줄어 위치가 범위를 벗어나도 오류 없이 끝으로 처리한다
         List<ExploreCourseView> found = List.of(exploreView(1L, LocalDateTime.now(), 0, 9));
-        given(courseRepository.findMostLikedCourses(any(Pageable.class))).willReturn(found);
+        given(courseRepository.findMostLikedCourses(any(), any(Pageable.class))).willReturn(found);
         String cursor = new CursorData(null, 10L, null).encode();
 
         // when
@@ -1135,14 +1155,14 @@ class CourseQueryServiceTest {
     void getCourseCopyPreview_success() {
         // given
         CourseDetailView view = mock(CourseDetailView.class);
-        given(courseRepository.findPublicCourseDetail(7L)).willReturn(Optional.of(view));
+        given(courseRepository.findPublicCourseDetail(7L, 1L)).willReturn(Optional.of(view));
         given(coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(7L)).willReturn(List.of());
 
         // when
-        courseQueryService.getCourseCopyPreview(7L);
+        courseQueryService.getCourseCopyPreview(1L, 7L);
 
         // then: 소유자 조건 없이 공개 조건만 걸린 조회를 쓴다
-        verify(courseRepository).findPublicCourseDetail(7L);
+        verify(courseRepository).findPublicCourseDetail(7L, 1L);
         verify(courseConverter).toCourseCopyPreviewResponse(view, List.of());
     }
 
@@ -1150,10 +1170,10 @@ class CourseQueryServiceTest {
     @DisplayName("공개되지 않은 코스의 내 코스로 만들기 화면을 조회하면 예외가 발생한다")
     void getCourseCopyPreview_notPublic() {
         // given: 비공개·일지 없음·삭제는 조회 단계에서 함께 걸러진다
-        given(courseRepository.findPublicCourseDetail(7L)).willReturn(Optional.empty());
+        given(courseRepository.findPublicCourseDetail(7L, 1L)).willReturn(Optional.empty());
 
         // when & then: 남의 비공개 코스가 존재한다는 사실을 드러내지 않도록 404다
-        assertThatThrownBy(() -> courseQueryService.getCourseCopyPreview(7L))
+        assertThatThrownBy(() -> courseQueryService.getCourseCopyPreview(1L, 7L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(CourseErrorCode.COURSE_NOT_FOUND.getMessage());
     }
@@ -1296,10 +1316,29 @@ class CourseQueryServiceTest {
         given(memberExistenceQueryService.existsMember(2L)).willReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> courseQueryService.getMemberPublicCourses(2L, null, null))
+        assertThatThrownBy(() -> courseQueryService.getMemberPublicCourses(1L, 2L, null, null))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
         verify(courseRepository, never()).findPublicCoursesByMemberId(any(), any());
+    }
+
+    @Test
+    @DisplayName("조회자와 상대 사이에 차단 관계가 있으면 조회 없이 빈 목록을 반환한다")
+    void getMemberPublicCourses_blocked_returnsEmptyList() {
+        // given: 차단 안내는 프로필 카드(OtherMemberProfileResponse.blocked)에서만 노출하고,
+        // 탭은 빈 상태와 동일한 화면을 그리므로 여기서는 예외가 아니라 빈 목록으로 응답한다
+        given(memberExistenceQueryService.existsMember(2L)).willReturn(true);
+        given(memberBlockRepository.existsBetween(1L, 2L)).willReturn(true);
+        MemberCourseListResponse expected = new MemberCourseListResponse(List.of(), null, false);
+        given(courseConverter.toMemberCourseListResponse(List.of(), null, false)).willReturn(expected);
+
+        // when
+        MemberCourseListResponse response = courseQueryService.getMemberPublicCourses(1L, 2L, null, null);
+
+        // then
+        assertThat(response).isEqualTo(expected);
+        verify(courseRepository, never()).findPublicCoursesByMemberId(any(), any());
+        verify(courseRepository, never()).findPublicCoursesByMemberIdAfterCursor(any(), any(), any(), any());
     }
 
     @Test
@@ -1312,7 +1351,7 @@ class CourseQueryServiceTest {
         given(courseConverter.toMemberCourseListResponse(List.of(), null, false)).willReturn(expected);
 
         // when
-        MemberCourseListResponse response = courseQueryService.getMemberPublicCourses(2L, null, 10);
+        MemberCourseListResponse response = courseQueryService.getMemberPublicCourses(1L, 2L, null, 10);
 
         // then
         assertThat(response).isEqualTo(expected);
@@ -1329,7 +1368,7 @@ class CourseQueryServiceTest {
         given(courseRepository.findPublicCoursesByMemberId(eq(2L), any(Pageable.class))).willReturn(views);
 
         // when
-        courseQueryService.getMemberPublicCourses(2L, null, 1);
+        courseQueryService.getMemberPublicCourses(1L, 2L, null, 1);
 
         // then
         ArgumentCaptor<String> cursorCaptor = ArgumentCaptor.forClass(String.class);
@@ -1355,7 +1394,7 @@ class CourseQueryServiceTest {
                         22L, new JournalCardInfoResponse(22L, null, null)));
 
         // when
-        courseQueryService.getMemberPublicCourses(2L, null, 10);
+        courseQueryService.getMemberPublicCourses(1L, 2L, null, 10);
 
         // then: 카드마다 조회했다면 journalId별로 여러 번 불렸겠지만, 모아서 한 번만 부른다
         verify(journalCardQueryService).getJournalCourseCardInfos(List.of(21L, 22L));
@@ -1375,7 +1414,7 @@ class CourseQueryServiceTest {
                 eq(2L), eq(createdAt), eq(5L), any(Pageable.class))).willReturn(List.of());
 
         // when
-        courseQueryService.getMemberPublicCourses(2L, cursor, 10);
+        courseQueryService.getMemberPublicCourses(1L, 2L, cursor, 10);
 
         // then
         verify(courseRepository).findPublicCoursesByMemberIdAfterCursor(
