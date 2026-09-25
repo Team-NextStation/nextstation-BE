@@ -188,6 +188,16 @@ public class SwaggerConfig {
                 .build();
     }
 
+    // 콘텐츠 신고 관련 API
+    @Bean
+    public GroupedOpenApi reportApi() {
+        return GroupedOpenApi.builder()
+                .group("Report")
+                .displayName("Report API")
+                .packagesToScan("com.cotato.nextstation.domain.moderation.controller")
+                .build();
+    }
+
     // 여행일지 관련 API
     @Bean
     public GroupedOpenApi journalApi() {

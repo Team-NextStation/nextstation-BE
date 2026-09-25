@@ -69,3 +69,8 @@ security:
 aws:
   s3:
     bucket-name: ${AWS_S3_BUCKET_NAME:}
+
+# 웹훅 URL을 비워두면 전송을 건너뛴다.
+moderation:
+  discord:
+    webhook-url: ${DISCORD_MODERATION_WEBHOOK_URL:}

@@ -2,6 +2,7 @@ package com.cotato.nextstation.domain.member.repository;
 
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
+import com.cotato.nextstation.domain.moderation.dto.ReportTarget;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -26,6 +27,11 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
      * 연관관계 조인에 이 별칭을 붙여서 쓴다.
      */
     String NOT_WITHDRAWN = "mem.status <> com.cotato.nextstation.domain.member.entity.MemberStatus.WITHDRAWN";
+
+    // 신고 대상 확인용, 탈퇴한 회원은 조회되지 않으므로 결과가 비면 신고할 수 없는 대상이다.
+    @Query("SELECT new com.cotato.nextstation.domain.moderation.dto.ReportTarget(mem.id, mem.nickname) "
+            + "FROM Member mem WHERE mem.id = :memberId AND " + NOT_WITHDRAWN)
+    Optional<ReportTarget> findReportTargetById(@Param("memberId") Long memberId);
 
     Optional<Member> findByEmail(String email);
 
