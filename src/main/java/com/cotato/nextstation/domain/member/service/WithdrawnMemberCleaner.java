@@ -2,6 +2,7 @@ package com.cotato.nextstation.domain.member.service;
 
 import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
 import com.cotato.nextstation.domain.auth.client.KakaoOAuthClient;
+import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
@@ -24,9 +25,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 유예 기간이 끝난 탈퇴 회원의 소셜 연동(Apple/카카오)을 해제하고 파기시킨다. 삭제는 WithdrawnMemberPurger가 한다.
+ * 유예 기간이 끝난 탈퇴 회원의 소셜 연동(Apple/카카오)을 해제하고 S3 업로드 이미지를 지운 뒤 파기시킨다.
+ * DB 삭제는 WithdrawnMemberPurger가 한다.
  * <p>
- * 트랜잭션을 열지 않는다. Apple/카카오 응답을 기다리는 동안 DB 커넥션을 잡지 않기 위해서다.
+ * 트랜잭션을 열지 않는다. Apple/카카오/S3 응답을 기다리는 동안 DB 커넥션을 잡지 않기 위해서다.
  * <p>
  * revoke/unlink를 탈퇴 요청 즉시가 아니라 이 배치(유예 종료) 시점에 하는 이유: 유예 기간 중에는 재로그인으로
  * 계정이 복구될 수 있는데, 탈퇴 즉시 끊어버리면 복구된 계정의 소셜 연동 상태가 DB와 어긋난다.
@@ -43,6 +45,7 @@ public class WithdrawnMemberCleaner {
     private final OAuthRefreshTokenEncryptor oAuthRefreshTokenEncryptor;
     private final AppleTokenClient appleTokenClient;
     private final KakaoOAuthClient kakaoOAuthClient;
+    private final ImageCommandService imageCommandService;
     private final WithdrawnMemberPurger withdrawnMemberPurger;
 
     // 매일 새벽 4시 30분. 같은 시간대의 EmailVerificationCleaner(4시)와 겹치지 않게 띄운다.
@@ -64,12 +67,24 @@ public class WithdrawnMemberCleaner {
         Set<Long> appleFailedMemberIds = revokeAppleTokens(targetIds);
         Set<Long> kakaoFailedMemberIds = unlinkKakaoAccounts(targetIds);
 
-        List<Long> purgeTargets = targetIds.stream()
+        List<Long> socialReleasedIds = targetIds.stream()
                 .filter(id -> !appleFailedMemberIds.contains(id) && !kakaoFailedMemberIds.contains(id))
                 .toList();
 
-        if (purgeTargets.isEmpty()) {
+        if (socialReleasedIds.isEmpty()) {
             log.warn("소셜 연동 해제에 모두 실패해 이번 파기를 건너뛴다: memberIds={}", targetIds);
+            return;
+        }
+
+        // DB 파기보다 먼저 지운다, 순서가 반대면 실패했을 때 재시도할 회원 행이 사라져 이미지가 영구히 남는다.
+        Set<Long> s3FailedMemberIds = deleteUploadedImages(socialReleasedIds);
+
+        List<Long> purgeTargets = socialReleasedIds.stream()
+                .filter(id -> !s3FailedMemberIds.contains(id))
+                .toList();
+
+        if (purgeTargets.isEmpty()) {
+            log.warn("S3 이미지 삭제에 모두 실패해 이번 파기를 건너뛴다: memberIds={}", socialReleasedIds);
             return;
         }
 
@@ -103,7 +118,7 @@ public class WithdrawnMemberCleaner {
             }
         }
 
-        logFailures("Apple", failedMemberIds, attemptedMemberIds.size());
+        logFailures("Apple 연동 해제", failedMemberIds, attemptedMemberIds.size());
         return failedMemberIds;
     }
 
@@ -137,21 +152,29 @@ public class WithdrawnMemberCleaner {
             }
         }
 
-        logFailures("카카오", failedMemberIds, attemptedMemberIds.size());
+        logFailures("카카오 연동 해제", failedMemberIds, attemptedMemberIds.size());
         return failedMemberIds;
     }
 
-    // 일부만 실패하면 그 회원들 refresh_token/연동 정보가 아직 남아있어 다음 배치가 알아서 재시도한다(WARN으로 충분).
-    // 시도한 회원 전원이 실패하면 개별 계정 문제가 아니라 어드민 키 만료·인증서 문제 같은 설정/연동 자체의
-    // 장애일 가능성이 높고, 그 상태로는 파기가 계속 밀리므로 놓치지 않도록 ERROR로 올린다.
-    private void logFailures(String provider, Set<Long> failedMemberIds, int attemptedCount) {
+    // 실패한 회원은 WITHDRAWN 상태로 남으므로 다음 배치가 같은 prefix로 다시 시도한다
+    private Set<Long> deleteUploadedImages(List<Long> memberIds) {
+        Set<Long> failedMemberIds = memberIds.stream()
+                .filter(memberId -> !imageCommandService.deleteAllOfMember(memberId))
+                .collect(Collectors.toSet());
+
+        logFailures("S3 이미지 삭제", failedMemberIds, memberIds.size());
+        return failedMemberIds;
+    }
+
+    // 일부 실패는 다음 배치가 재시도하므로 WARN, 전원 실패는 키·권한 같은 설정 장애일 가능성이 높아 ERROR로 남긴다.
+    private void logFailures(String task, Set<Long> failedMemberIds, int attemptedCount) {
         if (failedMemberIds.isEmpty()) {
             return;
         }
         if (failedMemberIds.size() == attemptedCount) {
-            log.error("{} 연동 해제가 전원 실패했다 - 설정/연동 자체의 문제일 수 있다: memberIds={}", provider, failedMemberIds);
+            log.error("{} 전원 실패 - 설정/연동 자체의 문제일 수 있다: memberIds={}", task, failedMemberIds);
         } else {
-            log.warn("{} 연동 해제 실패로 이번 파기에서 제외: memberIds={}", provider, failedMemberIds);
+            log.warn("{} 실패로 이번 파기에서 제외: memberIds={}", task, failedMemberIds);
         }
     }
 }

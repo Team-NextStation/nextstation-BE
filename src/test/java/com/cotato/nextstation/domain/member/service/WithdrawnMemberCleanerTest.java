@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.cotato.nextstation.domain.auth.client.AppleTokenClient;
 import com.cotato.nextstation.domain.auth.client.KakaoOAuthClient;
+import com.cotato.nextstation.domain.image.service.command.ImageCommandService;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
 import com.cotato.nextstation.domain.member.entity.MemberStatus;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -34,6 +36,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.never;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class WithdrawnMemberCleanerTest {
@@ -60,6 +64,9 @@ class WithdrawnMemberCleanerTest {
     private KakaoOAuthClient kakaoOAuthClient;
 
     @Mock
+    private ImageCommandService imageCommandService;
+
+    @Mock
     private WithdrawnMemberPurger withdrawnMemberPurger;
 
     private Logger logger;
@@ -71,6 +78,12 @@ class WithdrawnMemberCleanerTest {
         logCapture.start();
         logger = (Logger) LoggerFactory.getLogger(WithdrawnMemberCleaner.class);
         logger.addAppender(logCapture);
+    }
+
+    // S3 삭제는 기본적으로 성공시키고, S3 실패 케이스에서만 덮어쓴다
+    @BeforeEach
+    void setUpS3Success() {
+        lenient().when(imageCommandService.deleteAllOfMember(any())).thenReturn(true);
     }
 
     @AfterEach
@@ -305,5 +318,74 @@ class WithdrawnMemberCleanerTest {
 
         // then - 빈 목록으로 파기를 호출하면 IN () 이 되어 SQL이 깨진다
         then(withdrawnMemberPurger).should(never()).purge(any());
+    }
+
+    @Test
+    @DisplayName("S3 이미지 삭제는 DB 파기보다 먼저 실행된다")
+    void purge_deletesS3BeforePurge() {
+        // given
+        givenTargets(List.of(1L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of());
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        InOrder inOrder = inOrder(imageCommandService, withdrawnMemberPurger);
+        inOrder.verify(imageCommandService).deleteAllOfMember(1L);
+        inOrder.verify(withdrawnMemberPurger).purge(List.of(1L));
+    }
+
+    @Test
+    @DisplayName("S3 이미지 삭제에 실패한 회원만 파기 대상에서 빠진다 - 다음 배치가 다시 시도한다")
+    void purge_s3Failure_excludesFromPurgeTargets() {
+        // given
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of());
+        given(imageCommandService.deleteAllOfMember(1L)).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(withdrawnMemberPurger).should().purge(List.of(2L));
+        assertThat(logCapture.list).extracting(ILoggingEvent::getLevel).contains(Level.WARN).doesNotContain(Level.ERROR);
+    }
+
+    @Test
+    @DisplayName("S3 이미지 삭제가 전원 실패하면 ERROR로 남기고 이번 파기를 건너뛴다")
+    void purge_s3AllFailure_skipsPurgeAndLogsError() {
+        // given
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of());
+        given(imageCommandService.deleteAllOfMember(any())).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(withdrawnMemberPurger).should(never()).purge(any());
+        assertThat(logCapture.list).extracting(ILoggingEvent::getLevel).contains(Level.ERROR);
+    }
+
+    @Test
+    @DisplayName("소셜 연동 해제에 실패한 회원은 S3 이미지도 지우지 않는다 - 다음 배치에서 함께 처리한다")
+    void purge_socialFailure_skipsS3Delete() {
+        // given
+        givenTargets(List.of(1L, 2L));
+        givenAppleAccounts(List.of());
+        givenKakaoAccounts(List.of(kakaoAccount(1L, "kakao-1")));
+        given(kakaoOAuthClient.unlink("kakao-1")).willReturn(false);
+
+        // when
+        withdrawnMemberCleaner.purgeExpiredWithdrawals();
+
+        // then
+        then(imageCommandService).should(never()).deleteAllOfMember(1L);
+        then(imageCommandService).should().deleteAllOfMember(2L);
+        then(withdrawnMemberPurger).should().purge(List.of(2L));
     }
 }
