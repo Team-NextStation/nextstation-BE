@@ -33,11 +33,13 @@ import com.cotato.nextstation.domain.course.repository.CourseRepository.PlaceCou
 import com.cotato.nextstation.domain.course.repository.CourseRepository.PopularCourseView;
 import com.cotato.nextstation.domain.course.repository.CourseLikeRepository;
 import com.cotato.nextstation.domain.course.repository.CourseLikeRepository.LikedCourseView;
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.journal.dto.response.JournalCardInfoResponse;
 import com.cotato.nextstation.domain.journal.enums.TravelDuration;
 import com.cotato.nextstation.domain.journal.service.query.JournalCardQueryService;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.service.query.MemberExistenceQueryService;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
 import com.cotato.nextstation.domain.place.service.query.PlaceInfoQueryService;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
@@ -59,6 +61,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -108,6 +111,7 @@ public class CourseQueryService {
     private final MemberStampQueryService memberStampQueryService;
     private final JournalCardQueryService journalCardQueryService;
     private final MemberExistenceQueryService memberExistenceQueryService;
+    private final MemberBlockRepository memberBlockRepository;
     private final CourseConverter courseConverter;
 
     /**
@@ -140,11 +144,11 @@ public class CourseQueryService {
 
     private List<LikedCourseView> fetchLikedCourses(Long memberId, CursorData cursorData, Pageable pageable) {
         if (cursorData == null) {
-            return courseLikeRepository.findLikedCourses(memberId, pageable);
+            return courseLikeRepository.findLikedCourses(memberId, memberId, pageable);
         }
         validateTimeCursor(cursorData);
         return courseLikeRepository.findLikedCoursesAfterCursor(
-                memberId, cursorData.dateTimeValue(), cursorData.id(), pageable);
+                memberId, cursorData.dateTimeValue(), cursorData.id(), memberId, pageable);
     }
 
     /**
@@ -259,7 +263,7 @@ public class CourseQueryService {
         CourseSort resolvedSort = (sort == null) ? DEFAULT_SORT : sort;
 
         CursorData cursorData = CursorData.decode(cursor);
-        List<ExploreCourseView> courses = fetchExploreCourses(condition, resolvedSort, cursorData, pageable);
+        List<ExploreCourseView> courses = fetchExploreCourses(condition, resolvedSort, cursorData, pageable, memberId);
 
         boolean hasNext = courses.size() > pageSize;
         List<ExploreCourseView> pageContent = hasNext ? courses.subList(0, pageSize) : courses;
@@ -325,7 +329,7 @@ public class CourseQueryService {
 
         // 상한이 30개라 전부 가져와 잘라 쓴다. 페이지마다 다시 읽어도 30행이라 부담이 없다.
         List<ExploreCourseView> topCourses =
-                courseRepository.findMostLikedCourses(PageRequest.of(0, MOST_LIKED_LIMIT));
+                courseRepository.findMostLikedCourses(memberId, PageRequest.of(0, MOST_LIKED_LIMIT));
 
         if (offset >= topCourses.size()) {
             return courseConverter.toExploreListResponse(List.of(), List.of(), Set.of(), null, false);
@@ -360,7 +364,7 @@ public class CourseQueryService {
     }
 
     private List<ExploreCourseView> fetchExploreCourses(ExploreCourseCondition condition, CourseSort sort,
-                                                        CursorData cursorData, Pageable pageable) {
+                                                        CursorData cursorData, Pageable pageable, Long memberId) {
         if (cursorData != null) {
             validateExploreCursor(cursorData, sort);
         }
@@ -371,10 +375,10 @@ public class CourseQueryService {
         if (sort == CourseSort.POPULAR) {
             Long score = (cursorData == null) ? null : cursorData.longValue();
             return courseRepository.findExploreCoursesByPopular(condition.lineId(), condition.stationId(),
-                    keyword, condition.conceptTourId(), score, createdAt, courseId, pageable);
+                    keyword, condition.conceptTourId(), score, createdAt, courseId, memberId, pageable);
         }
         return courseRepository.findExploreCoursesByLatest(condition.lineId(), condition.stationId(),
-                keyword, condition.conceptTourId(), createdAt, courseId, pageable);
+                keyword, condition.conceptTourId(), createdAt, courseId, memberId, pageable);
     }
 
     // 커서가 정렬과 맞는지 확인한다. 인기순 커서에는 점수가 들어 있고 최신순에는 없다.
@@ -520,9 +524,10 @@ public class CourseQueryService {
      * <p>
      * 비공개이거나 없는 코스는 404다(복제와 같은 조건). 본인 코스인지는 보지 않는다 —
      * 조회는 부작용이 없고, 진입 자체는 프론트가 {@code isMine}으로 막는다.
+     * 작성자와 조회자 사이에 차단 관계가 있어도 404로 응답한다(존재 여부를 드러내지 않는다).
      */
-    public CourseCopyPreviewResponse getCourseCopyPreview(Long courseId) {
-        CourseDetailView course = courseRepository.findPublicCourseDetail(courseId)
+    public CourseCopyPreviewResponse getCourseCopyPreview(Long memberId, Long courseId) {
+        CourseDetailView course = courseRepository.findPublicCourseDetail(courseId, memberId)
                 .orElseThrow(() -> new CustomException(CourseErrorCode.COURSE_NOT_FOUND));
 
         List<CoursePlace> coursePlaces = coursePlaceRepository.findByCourseIdOrderByOrderNumAsc(courseId);
@@ -550,14 +555,10 @@ public class CourseQueryService {
         }
 
         List<Long> placeIds = coursePlaces.stream().map(CoursePlace::getPlaceId).toList();
-        Map<Long, PlaceInfoResponse> placeById = placeInfoQueryService.getPlaceInfos(placeIds).stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, place -> place));
+        Map<Long, HistoricalPlaceInfoResponse> placeById = placeInfoQueryService.getHistoricalPlaceInfos(placeIds).stream()
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, place -> place));
 
-        // 코스에 담긴 장소가 조회되지 않는 건 데이터 정합성이 깨진 상태다(장소 재시딩 등).
-        // 조용히 빠지면 아무도 모르는 데다, 그 코스는 순서 변경 저장까지 막힌다.
-        // PATCH /courses/{courseId}가 기존 장소 구성과 정확히 일치할 것을 요구하는데,
-        // 프론트는 빠진 장소를 모른 채 남은 것만 보내서 INVALID_COURSE_PLACES가 된다.
-        // 실제로 찍히면 course_places를 정리해야 한다.
+        // 장소가 실제로 사라진 경우만 누락으로 본다. 반려·삭제는 historical 조회가 상태와 함께 반환한다.
         if (placeById.size() != coursePlaces.size()) {
             List<Long> missingPlaceIds = placeIds.stream()
                     .filter(placeId -> !placeById.containsKey(placeId))
@@ -566,7 +567,7 @@ public class CourseQueryService {
                     coursePlaces.get(0).getCourseId(), missingPlaceIds);
         }
 
-        // 조회되지 않은 장소는 지도 핀도 못 찍고 목록에도 채울 내용이 없어 제외한다.
+        // 실제로 삭제된 레코드는 지도 핀과 목록을 채울 정보가 없어 제외한다.
         return coursePlaces.stream()
                 .filter(coursePlace -> placeById.containsKey(coursePlace.getPlaceId()))
                 .map(coursePlace -> courseConverter.toCoursePlaceDetailResponse(
@@ -579,9 +580,9 @@ public class CourseQueryService {
      * 인기순 상위 6개를 뽑되 노출 순서는 매번 섞는다. 같은 장소를 다시 열었을 때
      * 늘 같은 순서면 아래쪽 코스가 계속 묻히기 때문이다.
      */
-    public List<PlaceCourseResponse> getCoursesByPlace(Long placeId) {
+    public List<PlaceCourseResponse> getCoursesByPlace(Long memberId, Long placeId) {
         List<PlaceCourseView> courses = new ArrayList<>(courseRepository.findPopularPublicCoursesByPlaceId(
-                placeId, PageRequest.of(0, PLACE_COURSE_LIMIT)));
+                placeId, memberId, PageRequest.of(0, PLACE_COURSE_LIMIT)));
         if (courses.isEmpty()) {
             return List.of();
         }
@@ -620,25 +621,27 @@ public class CourseQueryService {
                 ));
     }
 
-    // 카드 배경은 코스의 첫 장소 이미지를 쓴다. 장소 이미지가 없을 때의 폴백은 장소 조회 쪽에서 처리된다.
+    // 공개 코스 카드의 배경은 코스 순서상 첫 승인 장소 이미지를 사용한다.
     private Map<Long, String> resolveCoverImages(Map<Long, List<Long>> placeIdsByCourse) {
-        Map<Long, Long> firstPlaceByCourse = new LinkedHashMap<>();
-        placeIdsByCourse.forEach((courseId, placeIds) -> {
-            if (!placeIds.isEmpty()) {
-                firstPlaceByCourse.put(courseId, placeIds.get(0));
-            }
-        });
-        if (firstPlaceByCourse.isEmpty()) {
+        List<Long> candidatePlaceIds = placeIdsByCourse.values().stream()
+                .flatMap(List::stream)
+                .distinct()
+                .toList();
+        if (candidatePlaceIds.isEmpty()) {
             return Map.of();
         }
 
-        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getPlaceInfos(List.copyOf(firstPlaceByCourse.values()))
+        Map<Long, String> imageUrlByPlace = placeInfoQueryService.getPlaceInfos(candidatePlaceIds)
                 .stream()
                 .filter(place -> place.imageUrl() != null)
                 .collect(Collectors.toMap(PlaceInfoResponse::placeId, PlaceInfoResponse::imageUrl));
 
         Map<Long, String> result = new LinkedHashMap<>();
-        firstPlaceByCourse.forEach((courseId, placeId) -> result.put(courseId, imageUrlByPlace.get(placeId)));
+        placeIdsByCourse.forEach((courseId, placeIds) -> result.put(courseId, placeIds.stream()
+                .map(imageUrlByPlace::get)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null)));
         return result;
     }
 
@@ -663,11 +666,18 @@ public class CourseQueryService {
      * <p>
      * 저장 탭(getMyCourses)과 달리 호선/역 필터가 없어 availableLines를 계산하지 않는다.
      * 프로필 조회와 달리 독립된 API라 여기서 직접 회원 존재를 검증한다.
+     * viewerId와 memberId 사이에 어느 방향으로든 차단 관계가 있으면 빈 목록을 반환한다. 차단 여부
+     * 안내는 프로필 카드(OtherMemberProfileResponse.blocked)에서만 노출하고, 탭은 빈 상태와
+     * 동일한 화면을 그린다.
      */
-    public MemberCourseListResponse getMemberPublicCourses(Long memberId, String cursor, Integer size) {
+    public MemberCourseListResponse getMemberPublicCourses(Long viewerId, Long memberId, String cursor, Integer size) {
         if (!memberExistenceQueryService.existsMember(memberId)) {
             log.warn("존재하지 않는 회원의 공개코스 탭 조회 시도: memberId={}", memberId);
             throw new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
+        }
+
+        if (memberBlockRepository.existsBetween(viewerId, memberId)) {
+            return courseConverter.toMemberCourseListResponse(List.of(), null, false);
         }
 
         int pageSize = resolvePageSize(size);
@@ -739,9 +749,10 @@ public class CourseQueryService {
         return getPopularCoursesByStation(stationId, limit, null);
     }
 
-    // memberId를 넘기면 응답의 isLiked가 채워진다. null이면 전부 false.
+    // memberId를 넘기면 응답의 isLiked가 채워지고, 차단한 상대의 코스도 함께 걸러진다. null이면 둘 다 건너뛴다.
     public List<PopularCourseResponse> getPopularCoursesByStation(Long stationId, int limit, Long memberId) {
-        List<PopularCourseView> courses = courseRepository.findPopularPublicCoursesByStationId(stationId, PageRequest.of(0, limit));
+        List<PopularCourseView> courses = courseRepository.findPopularPublicCoursesByStationId(
+                stationId, memberId, PageRequest.of(0, limit));
         return courseConverter.toPopularResponses(courses, resolveLikedCourses(memberId, courses));
     }
 

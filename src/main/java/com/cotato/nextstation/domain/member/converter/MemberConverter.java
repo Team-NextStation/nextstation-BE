@@ -19,8 +19,8 @@ public class MemberConverter {
         return new AccountInfoResponse(provider, member.getEmail(), member.getBirthDate());
     }
 
-    public OtherMemberProfileResponse toOtherProfileResponse(Member member, long stampCount, long publicCourseCount) {
+    public OtherMemberProfileResponse toOtherProfileResponse(Member member, long stampCount, long publicCourseCount, boolean blocked) {
         return new OtherMemberProfileResponse(
-                member.getId(), member.getNickname(), member.getProfileImageUrl(), stampCount, publicCourseCount);
+                member.getId(), member.getNickname(), member.getProfileImageUrl(), stampCount, publicCourseCount, blocked);
     }
 }

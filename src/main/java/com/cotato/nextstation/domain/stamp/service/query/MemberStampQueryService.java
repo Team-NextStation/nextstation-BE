@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.stamp.service.query;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.service.query.MemberExistenceQueryService;
@@ -40,6 +41,7 @@ public class MemberStampQueryService {
     private final JournalRepository journalRepository;
     private final MemberExistenceQueryService memberExistenceQueryService;
     private final MemberStampConverter memberStampConverter;
+    private final MemberBlockRepository memberBlockRepository;
 
     // 넘긴 코스들 중 회원이 완료한 코스 id 집합. 목록에서 카드별 완료 여부를 판단하는 데 쓴다.
     public Set<Long> getCompletedCourseIds(Long memberId, List<Long> courseIds) {
@@ -96,11 +98,18 @@ public class MemberStampQueryService {
      * 없는 역은 맨 뒤. 동일 호선 내에서는 역명 가나다순으로 2차 정렬한다.
      * <p>
      * 프로필 조회와 달리 독립된 API라 여기서 직접 회원 존재를 검증한다.
+     * viewerId와 memberId 사이에 어느 방향으로든 차단 관계가 있으면 빈 목록을 반환한다. 차단 여부
+     * 안내는 프로필 카드(OtherMemberProfileResponse.blocked)에서만 노출하고, 탭은 빈 상태와
+     * 동일한 화면을 그린다.
      */
-    public MemberStampListResponse getMemberStamps(Long memberId) {
+    public MemberStampListResponse getMemberStamps(Long viewerId, Long memberId) {
         if (!memberExistenceQueryService.existsMember(memberId)) {
             log.warn("존재하지 않는 회원의 스탬프 탭 조회 시도: memberId={}", memberId);
             throw new CustomException(MemberErrorCode.MEMBER_NOT_FOUND);
+        }
+
+        if (memberBlockRepository.existsBetween(viewerId, memberId)) {
+            return new MemberStampListResponse(0, List.of());
         }
 
         List<MemberStampResponse> stamps = memberStampRepository.findVisitedStationsByMemberId(memberId).stream()

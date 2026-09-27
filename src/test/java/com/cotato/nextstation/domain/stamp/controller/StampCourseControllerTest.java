@@ -1,8 +1,10 @@
 package com.cotato.nextstation.domain.stamp.controller;
 
+import com.cotato.nextstation.domain.course.dto.response.PopularCourseResponse;
 import com.cotato.nextstation.domain.stamp.dto.response.MyStampDetailResponse;
 import com.cotato.nextstation.domain.stamp.dto.response.MyStampListResponse;
 import com.cotato.nextstation.domain.stamp.dto.response.StampResponse;
+import com.cotato.nextstation.domain.stamp.dto.response.StationPopularCoursesResponse;
 import com.cotato.nextstation.domain.stamp.exception.StampErrorCode;
 import com.cotato.nextstation.domain.stamp.service.command.StampCommandService;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
@@ -124,5 +126,35 @@ class StampCourseControllerTest {
                         .header("Authorization", "Bearer " + TOKEN))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(StampErrorCode.MEMBER_STAMP_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    @DisplayName("정상 accessToken이면 역별 인기 코스를 반환한다")
+    void getPopularCoursesByStation_success() throws Exception {
+        // given
+        given(jwtProvider.parseClaims(TOKEN)).willReturn(
+                Jwts.claims().subject("1").add("purpose", "ACCESS").build());
+
+        StationPopularCoursesResponse response = new StationPopularCoursesResponse(
+                "보문역", "6호선", List.of(new PopularCourseResponse(1L, "보문역 코스", 300, 128, false)));
+        given(stampCourseQueryService.getPopularCoursesByStation(1L, 12L)).willReturn(response);
+
+        // when & then
+        mockMvc.perform(get("/api/v1/stamps/stations/{stationId}/courses", 12L)
+                        .header("Authorization", "Bearer " + TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stationName").value("보문역"))
+                .andExpect(jsonPath("$.data.courses[0].courseId").value(1L));
+    }
+
+    // 이 엔드포인트는 차단 필터링용 viewer id를 연결하며 @AuthenticationPrincipal이 처음 추가됐다.
+    // SecurityConfig가 anyRequest().permitAll()이라 인증 강제는 오직 이 파라미터 존재 여부에만
+    // 의존하므로, 토큰 없이 호출했을 때 실제로 401이 뜨는지 여기서 고정해 둔다.
+    @Test
+    @DisplayName("Authorization 헤더가 없으면 401을 반환한다")
+    void getPopularCoursesByStation_missingAuthorizationHeader() throws Exception {
+        mockMvc.perform(get("/api/v1/stamps/stations/{stationId}/courses", 12L))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("CLIENT_ERROR_401_UNAUTHORIZED"));
     }
 }

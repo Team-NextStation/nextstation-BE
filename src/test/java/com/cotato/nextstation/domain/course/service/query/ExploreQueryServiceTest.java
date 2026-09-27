@@ -52,7 +52,7 @@ class ExploreQueryServiceTest {
     void getExplore_sectionSizes() {
         // given
         given(courseQueryService.getMostLikedCourses(isNull(), isNull(), eq(6))).willReturn(emptyList());
-        given(conceptTourQueryService.getConceptTours())
+        given(conceptTourQueryService.getConceptTours(isNull()))
                 .willReturn(List.of(conceptTour(1), conceptTour(2), conceptTour(3), conceptTour(4)));
         given(courseQueryService.getExploreLines())
                 .willReturn(List.of(line(4L, "1호선", LineCode.LINE_1, true)));
@@ -72,7 +72,7 @@ class ExploreQueryServiceTest {
     void getExplore_selectsFirstLineWithCourses() {
         // given: 코스 없는 노선을 빼면 데이터가 쌓일 때마다 칩이 늘어나 노선도가 흔들려 보인다
         lenient().when(courseQueryService.getMostLikedCourses(any(), any(), any())).thenReturn(emptyList());
-        lenient().when(conceptTourQueryService.getConceptTours()).thenReturn(List.of());
+        lenient().when(conceptTourQueryService.getConceptTours(isNull())).thenReturn(List.of());
         given(courseQueryService.getExploreLines()).willReturn(List.of(
                 line(4L, "1호선", LineCode.LINE_1, false),
                 line(9L, "2호선", LineCode.LINE_2, true)));
@@ -92,7 +92,7 @@ class ExploreQueryServiceTest {
     void getExplore_noLineHasCourses() {
         // given: 노선 칩은 뜨지만 전부 비활성인 초기 상태
         lenient().when(courseQueryService.getMostLikedCourses(any(), any(), any())).thenReturn(emptyList());
-        lenient().when(conceptTourQueryService.getConceptTours()).thenReturn(List.of());
+        lenient().when(conceptTourQueryService.getConceptTours(isNull())).thenReturn(List.of());
         given(courseQueryService.getExploreLines()).willReturn(List.of(
                 line(4L, "1호선", LineCode.LINE_1, false)));
 
@@ -111,7 +111,7 @@ class ExploreQueryServiceTest {
     void getExplore_noLines() {
         // given
         lenient().when(courseQueryService.getMostLikedCourses(any(), any(), any())).thenReturn(emptyList());
-        lenient().when(conceptTourQueryService.getConceptTours()).thenReturn(List.of());
+        lenient().when(conceptTourQueryService.getConceptTours(isNull())).thenReturn(List.of());
         given(courseQueryService.getExploreLines()).willReturn(List.of());
 
         // when

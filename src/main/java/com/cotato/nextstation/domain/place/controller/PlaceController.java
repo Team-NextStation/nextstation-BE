@@ -29,15 +29,20 @@ public class PlaceController {
             description = """
                     장소 기본 정보, 이미지, 공개 리뷰 미리보기(최신순 최대 3개)를 함께 조회한다.
                     - 등록된 이미지가 없으면 카테고리 기본 이미지 1장으로 대체된다.
+                    - 비로그인도 조회할 수 있다. 로그인 시에만 차단한 사용자의 리뷰가 미리보기에서 제외된다.
                     """
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "accessToken을 보냈으나 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
             @ApiResponse(responseCode = "404", description = "존재하지 않는 장소 (`PlaceErrorCode.PLACE_NOT_FOUND`)"),
     })
     @GetMapping("/{placeId}")
-    public CommonResponse<PlaceDetailResponse> getPlaceDetail(@PathVariable Long placeId) {
-        return CommonResponse.success(placeQueryService.getPlaceDetail(placeId));
+    public CommonResponse<PlaceDetailResponse> getPlaceDetail(
+            @PathVariable Long placeId,
+            @Parameter(hidden = true) @AuthenticationPrincipal(required = false) JwtPrincipal principal) {
+        Long memberId = (principal != null) ? principal.memberId() : null;
+        return CommonResponse.success(placeQueryService.getPlaceDetail(placeId, memberId));
     }
 
     @Operation(

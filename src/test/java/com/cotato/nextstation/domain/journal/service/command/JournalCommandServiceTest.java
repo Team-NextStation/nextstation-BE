@@ -15,6 +15,7 @@ import com.cotato.nextstation.domain.place.dto.request.PlaceReviewUpdateRequest;
 import com.cotato.nextstation.domain.place.service.command.PlaceReviewCommandService;
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.util.ProfanityFilter;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,6 +62,8 @@ class JournalCommandServiceTest {
     private PlaceReviewCommandService placeReviewCommandService;
     @Mock
     private CourseCommandService courseCommandService;
+    @Mock
+    private ProfanityFilter profanityFilter;
 
     @InjectMocks
     private JournalCommandService journalCommandService;

@@ -18,6 +18,8 @@ import com.cotato.nextstation.domain.place.service.command.PlaceReviewCommandSer
 import com.cotato.nextstation.domain.stamp.service.query.MemberStampQueryService;
 
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
+import com.cotato.nextstation.global.util.ProfanityFilter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -43,9 +45,13 @@ public class JournalCommandService {
     private final MemberStampQueryService memberStampQueryService;
     private final PlaceReviewCommandService placeReviewCommandService;
     private final CourseCommandService courseCommandService;
+    private final ProfanityFilter profanityFilter;
 
     // 여행일지 작성
     public Long createJournal(Long memberId, JournalCreateRequest request) {
+        validateUserText(request.title());
+        validateUserText(request.overallReview());
+        validatePlaceReviewTexts(request.placeReviews());
         // memberStamp 소유권 검증 + courseId 확보 (장소 리뷰의 코스 소속 검증, 코스에 일지 연결하는 데 사용)
         Long courseId = memberStampQueryService.getCourseId(memberId, request.memberStampId());
 
@@ -114,6 +120,8 @@ public class JournalCommandService {
 
     // 여행일지 수정
     public void updateJournal(Long memberId, Long journalId, JournalUpdateRequest request) {
+        validateUserText(request.title());
+        validateUserText(request.overallReview());
         Journal journal = findOwnJournal(memberId, journalId);
 
         // 기본 필드 수정 (null이면 기존값 유지)
@@ -195,6 +203,18 @@ public class JournalCommandService {
             throw new CustomException(JournalErrorCode.JOURNAL_FORBIDDEN);
         }
         return journal;
+    }
+
+    private void validatePlaceReviewTexts(List<JournalCreateRequest.PlaceReviewRequest> placeReviews) {
+        if (placeReviews != null) {
+            placeReviews.forEach(placeReview -> validateUserText(placeReview.review()));
+        }
+    }
+
+    private void validateUserText(String text) {
+        if (profanityFilter.containsBannedWord(text)) {
+            throw new CustomException(GlobalErrorCode.CONTAINS_BANNED_WORD);
+        }
     }
 
 }

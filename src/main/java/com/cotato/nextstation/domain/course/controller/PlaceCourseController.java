@@ -51,6 +51,6 @@ public class PlaceCourseController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "장소 ID", example = "1")
             @PathVariable Long placeId) {
-        return CommonResponse.success(courseQueryService.getCoursesByPlace(placeId));
+        return CommonResponse.success(courseQueryService.getCoursesByPlace(principal.memberId(), placeId));
     }
 }

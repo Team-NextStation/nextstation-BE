@@ -1,13 +1,15 @@
 package com.cotato.nextstation.domain.place.service.query;
 
 import com.cotato.nextstation.domain.place.converter.PlaceConverter;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.StationTagCountResponse;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.entity.Place;
-import com.cotato.nextstation.domain.place.entity.PlaceTag;
-import com.cotato.nextstation.domain.place.entity.PlaceTagMapping;
-import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.repository.PlaceRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceRepository.HistoricalPlaceView;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository.ApprovedPlaceTagView;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,22 +61,33 @@ class PlaceInfoQueryServiceTest {
     }
 
     @Test
+    @DisplayName("기존 코스·여행일지용 장소 조회는 비승인 상태도 함께 반환한다")
+    void getHistoricalPlaceInfos_returnsPlaceStatus() {
+        // given
+        HistoricalPlaceView view = historicalPlace(1L, PlaceStatus.DELETED);
+        given(placeRepository.findHistoricalPlacesByIdIn(List.of(1L))).willReturn(List.of(view));
+
+        // when
+        List<HistoricalPlaceInfoResponse> result = placeInfoQueryService.getHistoricalPlaceInfos(List.of(1L));
+
+        // then
+        assertThat(result).containsExactly(new HistoricalPlaceInfoResponse(
+                1L, "장소1", "설명", "FOOD", "식당", "image.jpg", 127.1, 37.5, PlaceStatus.DELETED));
+    }
+
+    @Test
     @DisplayName("태그가 많은 순서대로 상위 3개만 반환한다")
     void getTopTagNames_top3() {
         // given
         List<Long> placeIds = List.of(1L, 2L);
 
-        List<PlaceTagMapping> mappings = List.of(
-                mapping(1L, PlaceTagName.NATURE),
-                mapping(1L, PlaceTagName.NATURE),
-                mapping(1L, PlaceTagName.NATURE),
-                mapping(1L, PlaceTagName.BUDGET),
-                mapping(1L, PlaceTagName.BUDGET),
-                mapping(1L, PlaceTagName.SHOPPING),
-                mapping(1L, PlaceTagName.INDOOR)
+        List<ApprovedPlaceTagView> mappings = List.of(
+                approvedTag(1L, "NATURE"), approvedTag(1L, "NATURE"), approvedTag(1L, "NATURE"),
+                approvedTag(1L, "BUDGET"), approvedTag(1L, "BUDGET"),
+                approvedTag(1L, "SHOPPING"), approvedTag(1L, "INDOOR")
         );
 
-        given(placeTagMappingRepository.findByPlaceIdIn(placeIds)).willReturn(mappings);
+        given(placeTagMappingRepository.findApprovedTagsByPlaceIdIn(placeIds)).willReturn(mappings);
 
         // when
         List<String> result = placeInfoQueryService.getTopTagNames(placeIds);
@@ -91,9 +104,9 @@ class PlaceInfoQueryServiceTest {
     void getTopTagNames_lessThanLimit() {
         // given
         List<Long> placeIds = List.of(1L);
-        List<PlaceTagMapping> mappings = List.of(mapping(1L, PlaceTagName.NATURE));
+        List<ApprovedPlaceTagView> mappings = List.of(approvedTag(1L, "NATURE"));
 
-        given(placeTagMappingRepository.findByPlaceIdIn(placeIds)).willReturn(mappings);
+        given(placeTagMappingRepository.findApprovedTagsByPlaceIdIn(placeIds)).willReturn(mappings);
 
         // when
         List<String> result = placeInfoQueryService.getTopTagNames(placeIds);
@@ -109,11 +122,11 @@ class PlaceInfoQueryServiceTest {
         // given
         List<Long> placeIds = List.of(1L, 2L);
 
-        PlaceTagMapping mapping1 = mapping(1L, PlaceTagName.NATURE);
-        PlaceTagMapping mapping2 = mapping(1L, PlaceTagName.BUDGET);
-        PlaceTagMapping mapping3 = mapping(2L, PlaceTagName.PHOTO_SPOT);
+        ApprovedPlaceTagView mapping1 = approvedTag(1L, "NATURE");
+        ApprovedPlaceTagView mapping2 = approvedTag(1L, "BUDGET");
+        ApprovedPlaceTagView mapping3 = approvedTag(2L, "PHOTO_SPOT");
 
-        given(placeTagMappingRepository.findByPlaceIdIn(placeIds))
+        given(placeTagMappingRepository.findApprovedTagsByPlaceIdIn(placeIds))
                 .willReturn(List.of(mapping1, mapping2, mapping3));
 
         // when
@@ -134,18 +147,52 @@ class PlaceInfoQueryServiceTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    @DisplayName("역별 태그 집계는 승인 장소 태그만 집계한다")
+    void getPlaceCountsByStationForTags_countsApprovedTagsOnly() {
+        // given: repository SQL이 APPROVED 조건으로 걸러 반환한 결과만 서비스가 집계한다.
+        List<ApprovedPlaceTagView> approvedTags = List.of(
+                approvedTag(1L, 10L, "NATURE"),
+                approvedTag(2L, 10L, "NATURE"),
+                approvedTag(3L, 20L, "BUDGET")
+        );
+        given(placeTagMappingRepository.findApprovedTagsByTagNameIn(List.of("NATURE", "BUDGET")))
+                .willReturn(approvedTags);
+
+        // when
+        StationTagCountResponse result = placeInfoQueryService.getPlaceCountsByStationForTags(
+                List.of("NATURE", "BUDGET"));
+
+        // then
+        assertThat(result.counts()).containsEntry(10L, Map.of("NATURE", 2L));
+        assertThat(result.counts()).containsEntry(20L, Map.of("BUDGET", 1L));
+    }
 
 
-private PlaceTagMapping mapping(Long placeId, PlaceTagName tagName) {
-        Place place = mock(Place.class);
-        lenient().when(place.getId()).thenReturn(placeId);
 
-        PlaceTag placeTag = mock(PlaceTag.class);
-        lenient().when(placeTag.getName()).thenReturn(tagName);
+    private HistoricalPlaceView historicalPlace(Long placeId, PlaceStatus status) {
+        HistoricalPlaceView view = mock(HistoricalPlaceView.class);
+        given(view.getPlaceId()).willReturn(placeId);
+        given(view.getPlaceName()).willReturn("장소" + placeId);
+        given(view.getDescription()).willReturn("설명");
+        given(view.getCategoryCode()).willReturn("FOOD");
+        given(view.getCategoryName()).willReturn("식당");
+        given(view.getImageUrl()).willReturn("image.jpg");
+        given(view.getXCoordinate()).willReturn(127.1);
+        given(view.getYCoordinate()).willReturn(37.5);
+        given(view.getPlaceStatus()).willReturn(status.name());
+        return view;
+    }
 
-        PlaceTagMapping mapping = mock(PlaceTagMapping.class);
-        lenient().when(mapping.getPlace()).thenReturn(place);
-        lenient().when(mapping.getPlaceTag()).thenReturn(placeTag);
-        return mapping;
+    private ApprovedPlaceTagView approvedTag(Long placeId, String tagName) {
+        return approvedTag(placeId, 1L, tagName);
+    }
+
+    private ApprovedPlaceTagView approvedTag(Long placeId, Long stationId, String tagName) {
+        ApprovedPlaceTagView view = mock(ApprovedPlaceTagView.class);
+        lenient().when(view.getPlaceId()).thenReturn(placeId);
+        lenient().when(view.getStationId()).thenReturn(stationId);
+        lenient().when(view.getTagName()).thenReturn(tagName);
+        return view;
     }
 }

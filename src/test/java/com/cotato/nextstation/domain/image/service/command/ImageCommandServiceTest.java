@@ -7,6 +7,7 @@ import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.service.query.AdminGuard;
+import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
 import com.cotato.nextstation.global.exception.CustomException;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,18 +22,31 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.S3Error;
+import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 import java.net.URI;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,6 +58,8 @@ class ImageCommandServiceTest {
     private static final Long JOURNAL_ID = 10L;
     private static final Long OTHER_MEMBER_ID = 999L;
     private static final String KAKAO_PLACE_ID = "8137464";
+    private static final String STATIC_PLACE_IMAGE_URL =
+            "https://test-bucket.s3.ap-northeast-2.amazonaws.com/images/static/places/" + KAKAO_PLACE_ID + "/uuid.jpg";
 
     @Mock
     private S3Presigner s3Presigner;
@@ -55,6 +71,9 @@ class ImageCommandServiceTest {
     private JournalRepository journalRepository;
 
     @Mock
+    private PlaceImageRepository placeImageRepository;
+
+    @Mock
     private AdminGuard adminGuard;
 
     private ImageCommandService imageCommandService;
@@ -62,7 +81,8 @@ class ImageCommandServiceTest {
 
     @BeforeEach
     void setUp() {
-        imageCommandService = new ImageCommandService(s3Presigner, s3Client, journalRepository, adminGuard, BUCKET_NAME, REGION);
+        imageCommandService = new ImageCommandService(
+                s3Presigner, s3Client, journalRepository, placeImageRepository, adminGuard, BUCKET_NAME, REGION);
     }
 
     private void givenPresignedUrl(String url) throws Exception {
@@ -204,6 +224,54 @@ class ImageCommandServiceTest {
     }
 
     @Test
+    @DisplayName("장소가 참조하지 않는 사진이면 관리자가 삭제할 수 있다")
+    void deleteImage_staticPlace_unreferenced() {
+        // given: 업로드만 하고 장소에 저장하지 않은 사진
+        String imageUrl = STATIC_PLACE_IMAGE_URL;
+        given(placeImageRepository.existsByImageUrl(imageUrl)).willReturn(false);
+
+        // when
+        imageCommandService.deleteImage(imageUrl, MEMBER_ID);
+
+        // then
+        verify(adminGuard).requireAdmin(MEMBER_ID);
+        ArgumentCaptor<DeleteObjectRequest> captor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(captor.capture());
+        assertThat(captor.getValue().key()).isEqualTo("images/static/places/" + KAKAO_PLACE_ID + "/uuid.jpg");
+    }
+
+    @Test
+    @DisplayName("장소가 참조 중인 사진이면 S3 원본을 삭제하지 않는다")
+    void deleteImage_staticPlace_stillReferenced() {
+        // given
+        String imageUrl = STATIC_PLACE_IMAGE_URL;
+        given(placeImageRepository.existsByImageUrl(imageUrl)).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> imageCommandService.deleteImage(imageUrl, MEMBER_ID))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ImageErrorCode.PLACE_IMAGE_IN_USE.getMessage());
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 장소 사진을 삭제할 수 없고 참조 조회도 하지 않는다")
+    void deleteImage_staticPlace_nonAdmin() {
+        // given
+        org.mockito.BDDMockito.willThrow(new CustomException(GlobalErrorCode.FORBIDDEN))
+                .given(adminGuard).requireAdmin(MEMBER_ID);
+
+        // when & then
+        assertThatThrownBy(() -> imageCommandService.deleteImage(STATIC_PLACE_IMAGE_URL, MEMBER_ID))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(GlobalErrorCode.FORBIDDEN.getMessage());
+
+        verify(placeImageRepository, never()).existsByImageUrl(anyString());
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
     @DisplayName("버킷 URL prefix로 시작하지 않는 imageUrl이면 예외가 발생한다")
     void deleteImage_invalidUrlPrefix() {
         // given
@@ -271,6 +339,109 @@ class ImageCommandServiceTest {
         // 우리 버킷이 아닌 외부 URL
         assertThatThrownBy(() -> imageCommandService.validatePlaceImageUrl("https://evil.example.org/a.jpg", KAKAO_PLACE_ID))
                 .isInstanceOf(CustomException.class);
+    }
+
+    private void givenS3Objects(Map<String, List<String>> keysByPrefix) {
+        given(s3Client.listObjectsV2Paginator(any(Consumer.class))).willCallRealMethod();
+        given(s3Client.listObjectsV2Paginator(any(ListObjectsV2Request.class))).willCallRealMethod();
+        given(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).willAnswer(invocation -> {
+            ListObjectsV2Request request = invocation.getArgument(0);
+            List<S3Object> contents = keysByPrefix.getOrDefault(request.prefix(), List.of()).stream()
+                    .map(key -> S3Object.builder().key(key).build())
+                    .toList();
+            return ListObjectsV2Response.builder().contents(contents).isTruncated(false).build();
+        });
+    }
+
+    private void givenDeleteObjectsResponse(DeleteObjectsResponse response) {
+        given(s3Client.deleteObjects(any(Consumer.class))).willCallRealMethod();
+        given(s3Client.deleteObjects(any(DeleteObjectsRequest.class))).willReturn(response);
+    }
+
+    private List<String> deletedKeys() {
+        ArgumentCaptor<DeleteObjectsRequest> captor = ArgumentCaptor.forClass(DeleteObjectsRequest.class);
+        verify(s3Client, atLeastOnce()).deleteObjects(captor.capture());
+        return captor.getAllValues().stream()
+                .flatMap(request -> request.delete().objects().stream())
+                .map(ObjectIdentifier::key)
+                .toList();
+    }
+
+    @Test
+    @DisplayName("회원 이미지 일괄 삭제는 프로필/일지 경로의 객체를 모두 지우고 true를 반환한다")
+    void deleteAllOfMember_deletesProfileAndJournal() {
+        // given
+        givenS3Objects(Map.of(
+                "images/uploads/profile/1/", List.of("images/uploads/profile/1/a.jpg"),
+                "images/uploads/journal/1/", List.of("images/uploads/journal/1/10/b.jpg", "images/uploads/journal/1/c.jpg")));
+        givenDeleteObjectsResponse(DeleteObjectsResponse.builder().build());
+
+        // when
+        boolean result = imageCommandService.deleteAllOfMember(MEMBER_ID);
+
+        // then
+        assertThat(result).isTrue();
+        assertThat(deletedKeys()).containsExactlyInAnyOrder(
+                "images/uploads/profile/1/a.jpg", "images/uploads/journal/1/10/b.jpg", "images/uploads/journal/1/c.jpg");
+    }
+
+    @Test
+    @DisplayName("회원 이미지 일괄 삭제는 memberId 뒤에 /를 붙여 조회해 다른 회원(12 등) 경로를 건드리지 않는다")
+    void deleteAllOfMember_prefixEndsWithSlash() {
+        // given
+        givenS3Objects(Map.of());
+
+        // when
+        imageCommandService.deleteAllOfMember(MEMBER_ID);
+
+        // then
+        ArgumentCaptor<ListObjectsV2Request> captor = ArgumentCaptor.forClass(ListObjectsV2Request.class);
+        verify(s3Client, times(2)).listObjectsV2(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListObjectsV2Request::prefix)
+                .containsExactly("images/uploads/profile/1/", "images/uploads/journal/1/");
+    }
+
+    @Test
+    @DisplayName("회원 이미지가 하나도 없으면 삭제 요청 없이 true를 반환한다")
+    void deleteAllOfMember_noObjects() {
+        // given
+        givenS3Objects(Map.of());
+
+        // when
+        boolean result = imageCommandService.deleteAllOfMember(MEMBER_ID);
+
+        // then
+        assertThat(result).isTrue();
+        verify(s3Client, never()).deleteObjects(any(DeleteObjectsRequest.class));
+    }
+
+    @Test
+    @DisplayName("DeleteObjects 응답에 errors가 있으면 일부만 실패한 것이므로 false를 반환한다")
+    void deleteAllOfMember_partialErrors_returnsFalse() {
+        // given
+        givenS3Objects(Map.of("images/uploads/profile/1/", List.of("images/uploads/profile/1/a.jpg")));
+        givenDeleteObjectsResponse(DeleteObjectsResponse.builder()
+                .errors(S3Error.builder().key("images/uploads/profile/1/a.jpg").code("AccessDenied").build())
+                .build());
+
+        // when
+        boolean result = imageCommandService.deleteAllOfMember(MEMBER_ID);
+
+        // then
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    @DisplayName("목록 조회에서 예외가 나면 false를 반환한다")
+    void deleteAllOfMember_listFailure_returnsFalse() {
+        // given
+        given(s3Client.listObjectsV2Paginator(any(Consumer.class))).willThrow(new RuntimeException("AccessDenied"));
+
+        // when
+        boolean result = imageCommandService.deleteAllOfMember(MEMBER_ID);
+
+        // then
+        assertThat(result).isFalse();
     }
 
 }

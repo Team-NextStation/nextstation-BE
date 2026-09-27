@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+import static com.cotato.nextstation.domain.block.repository.MemberBlockRepository.NOT_BLOCKED_BY_VIEWER;
 
 public interface CourseRepository extends JpaRepository<Course, Long> {
 
@@ -52,8 +53,10 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "JOIN Station s ON s.id = c.stationId " +
             "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
-            "WHERE c.id = :courseId AND j.isPublic = true AND " + NOT_WITHDRAWN)
-    Optional<CourseDetailView> findPublicCourseDetail(@Param("courseId") Long courseId);
+            "WHERE c.id = :courseId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER)
+    Optional<CourseDetailView> findPublicCourseDetail(@Param("courseId") Long courseId,
+                                                        @Param("currentMemberId") Long currentMemberId);
 
     // 공유 링크로 조회하는 화면. 소유자/공개 여부를 따지지 않는다.
     // courseId 대신 추측 불가능한 shareToken으로 조회해, 링크를 모르는 사람은 다른 사람의
@@ -177,8 +180,11 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Member mem ON mem.id = c.memberId " +
             "WHERE c.stationId = :stationId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY (c.viewCount + c.likeCount * 2) DESC, j.createdAt DESC, c.id DESC")
-    List<PopularCourseView> findPopularPublicCoursesByStationId(@Param("stationId") Long stationId, Pageable pageable);
+    List<PopularCourseView> findPopularPublicCoursesByStationId(@Param("stationId") Long stationId,
+                                                                  @Param("currentMemberId") Long currentMemberId,
+                                                                  Pageable pageable);
 
     // 내가 만든 코스 목록 (최신순). 카드에 필요한 역/대표 호선까지 한 번에 가져온다(코스마다 조회하면 N+1).
     // Course는 stationId만 들고 있어(연관관계 미매핑) Station을 id로 ad-hoc 조인한다.
@@ -310,8 +316,11 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
             "WHERE cp.placeId = :placeId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY (c.viewCount + c.likeCount * 2) DESC, j.createdAt DESC, c.id DESC")
-    List<PlaceCourseView> findPopularPublicCoursesByPlaceId(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceCourseView> findPopularPublicCoursesByPlaceId(@Param("placeId") Long placeId,
+                                                              @Param("currentMemberId") Long currentMemberId,
+                                                              Pageable pageable);
 
     /**
      * 둘러보기 코스 목록 - 최신순. 노선따라 둘러보기와 코스 검색이 같은 조회를 쓴다.
@@ -357,6 +366,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "     OR TRIM(TRAILING '역' FROM s.stationName) LIKE CONCAT('%', :keyword, '%') ESCAPE '!') " +
                         "AND (:createdAt IS NULL OR j.createdAt < :createdAt " +
             "     OR (j.createdAt = :createdAt AND c.id < :courseId)) " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY j.createdAt DESC, c.id DESC")
     List<ExploreCourseView> findExploreCoursesByLatest(@Param("lineId") Long lineId,
                                                        @Param("stationId") Long stationId,
@@ -364,6 +374,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
                                                        @Param("conceptTourId") Long conceptTourId,
                                                        @Param("createdAt") LocalDateTime createdAt,
                                                        @Param("courseId") Long courseId,
+                                                       @Param("currentMemberId") Long currentMemberId,
                                                        Pageable pageable);
 
     /**
@@ -398,6 +409,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
                         "AND (:score IS NULL OR (c.viewCount + c.likeCount * 2) < :score " +
             "     OR ((c.viewCount + c.likeCount * 2) = :score " +
             "         AND (j.createdAt < :createdAt OR (j.createdAt = :createdAt AND c.id < :courseId)))) " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY (c.viewCount + c.likeCount * 2) DESC, j.createdAt DESC, c.id DESC")
     List<ExploreCourseView> findExploreCoursesByPopular(@Param("lineId") Long lineId,
                                                         @Param("stationId") Long stationId,
@@ -406,6 +418,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
                                                         @Param("score") Long score,
                                                         @Param("createdAt") LocalDateTime createdAt,
                                                         @Param("courseId") Long courseId,
+                                                        @Param("currentMemberId") Long currentMemberId,
                                                         Pageable pageable);
 
     /**
@@ -433,8 +446,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
             "WHERE j.isPublic = true AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY c.likeCount DESC, c.viewCount DESC, j.createdAt DESC, c.id DESC")
-    List<ExploreCourseView> findMostLikedCourses(Pageable pageable);
+    List<ExploreCourseView> findMostLikedCourses(@Param("currentMemberId") Long currentMemberId, Pageable pageable);
 
     /**
      * 노선 칩으로 그릴 후보 노선. 뽑기 역이 속한 노선 중 {@code lineCodes}에 해당하는 것만 내려준다.

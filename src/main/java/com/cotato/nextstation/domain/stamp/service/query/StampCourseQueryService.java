@@ -26,7 +26,7 @@ public class StampCourseQueryService {
     private final StationRepository stationRepository;
     private final StationLineRepository stationLineRepository;
 
-    public StationPopularCoursesResponse getPopularCoursesByStation(Long stationId) {
+    public StationPopularCoursesResponse getPopularCoursesByStation(Long memberId, Long stationId) {
         Station station = stationRepository.findById(stationId)
                 .orElseThrow(() -> new CustomException(StampErrorCode.STATION_NOT_FOUND));
 
@@ -34,7 +34,8 @@ public class StampCourseQueryService {
                 .map(stationLine -> stationLine.getLine().getName())
                 .orElse(null);
 
-        List<PopularCourseResponse> courses = courseQueryService.getPopularCoursesByStation(stationId, POPULAR_COURSE_LIMIT);
+        List<PopularCourseResponse> courses =
+                courseQueryService.getPopularCoursesByStation(stationId, POPULAR_COURSE_LIMIT, memberId);
 
         return stampCourseConverter.toStationPopularCoursesResponse(station, lineName, courses);
     }

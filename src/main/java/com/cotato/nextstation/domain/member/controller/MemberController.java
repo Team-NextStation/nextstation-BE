@@ -150,11 +150,12 @@ public class MemberController {
     @Operation(
             summary = "다른 회원 프로필 조회",
             description = """
-                    다른 회원의 프로필(닉네임/프로필 이미지/스탬프 개수/공개 코스 개수)을 조회한다.
+                    다른 회원의 프로필(닉네임/프로필 이미지/스탬프 개수/공개 코스 개수/차단 여부)을 조회한다.
                     - accessToken 인증 필요. 우측 상단 자물쇠(Authorize) 버튼을 눌러 로그인 API 응답의 accessToken 값을(Bearer 접두사 없이) 넣으면 된다.
                     - 프로필 화면 상단 헤더용 정보다. 스탬프 탭 목록은 `GET /members/{memberId}/stamps`, 공개코스 탭 목록은 `GET /members/{memberId}/courses`로 별도 조회한다.
                     - 스탬프 개수는 방문한(스탬프를 찍은) 서로 다른 역의 개수다. 같은 역에서 여러 코스를 완료해도 1개로 센다.
                     - 공개 코스 개수는 그 회원이 만든 코스 중 여행일지가 공개된 코스만 센다.
+                    - `blocked`가 true면(조회자-상대 어느 방향이든 차단 관계) 닉네임/이미지는 그대로 노출하되 스탬프/공개 코스 개수는 0으로 내려간다. 프론트는 이 값으로 "내가 차단한 사용자예요" 안내를 프로필 카드에 표시하면 된다. 스탬프/공개코스 탭 API는 이 경우에도 200과 빈 목록으로 응답한다(빈 상태 화면과 동일하게 그리면 된다).
                     """
     )
     @SecurityRequirement(name = "accessTokenAuth")
@@ -169,7 +170,7 @@ public class MemberController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "조회할 회원 ID", example = "2")
             @PathVariable @Positive Long memberId) {
-        return CommonResponse.success(memberQueryService.getMemberProfile(memberId));
+        return CommonResponse.success(memberQueryService.getMemberProfile(principal.memberId(), memberId));
     }
 
     @Operation(
@@ -194,7 +195,7 @@ public class MemberController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "조회할 회원 ID", example = "2")
             @PathVariable @Positive Long memberId) {
-        return CommonResponse.success(memberStampQueryService.getMemberStamps(memberId));
+        return CommonResponse.success(memberStampQueryService.getMemberStamps(principal.memberId(), memberId));
     }
 
     @Operation(
@@ -221,6 +222,6 @@ public class MemberController {
             @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (1~50, 기본 10)", example = "10")
             @RequestParam(required = false) Integer size) {
-        return CommonResponse.success(courseQueryService.getMemberPublicCourses(memberId, cursor, size));
+        return CommonResponse.success(courseQueryService.getMemberPublicCourses(principal.memberId(), memberId, cursor, size));
     }
 }

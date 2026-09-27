@@ -8,7 +8,8 @@ import com.cotato.nextstation.domain.course.repository.CourseLikeRepository.Like
 import com.cotato.nextstation.domain.course.dto.response.MyCourseDetailResponse;
 import com.cotato.nextstation.domain.course.dto.response.CoursePlaceDetailResponse;
 import com.cotato.nextstation.domain.course.dto.response.PlaceCourseResponse;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.course.repository.CourseRepository.MemberCourseCardView;
 import com.cotato.nextstation.domain.course.repository.CourseRepository.CourseDetailView;
 import com.cotato.nextstation.domain.journal.dto.response.JournalCardInfoResponse;
@@ -113,9 +114,9 @@ class CourseConverterTest {
     @DisplayName("코스 확인 장소 응답에 조회한 장소 정보를 순서와 함께 그대로 담는다")
     void toCoursePlaceDetailResponse() {
         // given
-        PlaceInfoResponse place = new PlaceInfoResponse(
+        HistoricalPlaceInfoResponse place = new HistoricalPlaceInfoResponse(
                 11L, "보문숲길도서관", "혼자 조용히 머물기 좋은 동네 도서관",
-                "CULTURE", "문화공간", "https://img/1.jpg", 127.0345, 37.5804);
+                "CULTURE", "문화공간", "https://img/1.jpg", 127.0345, 37.5804, PlaceStatus.APPROVED);
 
         // when
         CoursePlaceDetailResponse response = courseConverter.toCoursePlaceDetailResponse(place, 2);
@@ -123,15 +124,15 @@ class CourseConverterTest {
         // then: 필드가 하나라도 누락되면 화면에서 핀/이미지/순서가 어긋난다
         assertThat(response).isEqualTo(new CoursePlaceDetailResponse(
                 11L, "보문숲길도서관", "혼자 조용히 머물기 좋은 동네 도서관",
-                "CULTURE", "문화공간", "https://img/1.jpg", 127.0345, 37.5804, 2));
+                "CULTURE", "문화공간", "https://img/1.jpg", 127.0345, 37.5804, PlaceStatus.APPROVED, 2));
     }
 
     @Test
     @DisplayName("장소 이미지가 없어도 카테고리는 담아 내린다")
     void toCoursePlaceDetailResponse_withoutImage() {
         // given: 카테고리 기본 이미지가 아직 없어 imageUrl이 비는 장소
-        PlaceInfoResponse place = new PlaceInfoResponse(
-                12L, "보문사", "천년 고찰", "CULTURE", "문화공간", null, 127.0350, 37.5810);
+        HistoricalPlaceInfoResponse place = new HistoricalPlaceInfoResponse(
+                12L, "보문사", "천년 고찰", "CULTURE", "문화공간", null, 127.0350, 37.5810, PlaceStatus.DELETED);
 
         // when
         CoursePlaceDetailResponse response = courseConverter.toCoursePlaceDetailResponse(place, 1);
@@ -140,6 +141,7 @@ class CourseConverterTest {
         assertThat(response.imageUrl()).isNull();
         assertThat(response.categoryCode()).isEqualTo("CULTURE");
         assertThat(response.categoryName()).isEqualTo("문화공간");
+        assertThat(response.placeStatus()).isEqualTo(PlaceStatus.DELETED);
     }
 
     @ParameterizedTest(name = "장소 {0}곳이면 {1}")

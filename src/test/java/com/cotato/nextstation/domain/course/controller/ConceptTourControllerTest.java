@@ -59,7 +59,7 @@ class ConceptTourControllerTest {
     @Test
     @DisplayName("컨셉 목록은 코스 수와 함께 반환한다")
     void getConceptTours_success() throws Exception {
-        given(conceptTourQueryService.getConceptTours()).willReturn(List.of(
+        given(conceptTourQueryService.getConceptTours(eq(1L))).willReturn(List.of(
                 new ConceptTourResponse(1L, "문구 투어", "작은 문구점과 책방을 찾아가는 코스", 18)));
 
         mockMvc.perform(get("/api/v1/explore/concept-tours")
@@ -73,7 +73,7 @@ class ConceptTourControllerTest {
     @Test
     @DisplayName("컨셉 목록은 토큰 없이도 조회할 수 있다")
     void getConceptTours_withoutToken() throws Exception {
-        given(conceptTourQueryService.getConceptTours()).willReturn(List.of());
+        given(conceptTourQueryService.getConceptTours(isNull())).willReturn(List.of());
 
         mockMvc.perform(get("/api/v1/explore/concept-tours"))
                 .andExpect(status().isOk());

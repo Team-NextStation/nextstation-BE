@@ -51,7 +51,7 @@ class PlaceCourseControllerTest {
     @Test
     @DisplayName("장소를 포함한 코스는 200과 코스 카드를 반환한다")
     void getCoursesByPlace_success() throws Exception {
-        given(courseQueryService.getCoursesByPlace(1L)).willReturn(List.of(
+        given(courseQueryService.getCoursesByPlace(1L, 1L)).willReturn(List.of(
                 new PlaceCourseResponse(50L, "주연의 보문역 여행", 123L, "보문역",
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6), 4, "SHORT", List.of("자연과함께", "사진찍기좋은"), "cover.jpg")));
 
@@ -73,7 +73,7 @@ class PlaceCourseControllerTest {
     @Test
     @DisplayName("대표 호선이 없는 역의 코스는 line 필드가 생략되지 않고 null로 내려간다")
     void getCoursesByPlace_nullLine() throws Exception {
-        given(courseQueryService.getCoursesByPlace(2L)).willReturn(List.of(
+        given(courseQueryService.getCoursesByPlace(1L, 2L)).willReturn(List.of(
                 new PlaceCourseResponse(11L, "코스", 200L, "역이름",
                         null, 3, "SHORT", List.of(), null)));
 
@@ -87,7 +87,7 @@ class PlaceCourseControllerTest {
     @Test
     @DisplayName("코스가 없으면 200과 빈 배열을 반환한다")
     void getCoursesByPlace_empty() throws Exception {
-        given(courseQueryService.getCoursesByPlace(999L)).willReturn(List.of());
+        given(courseQueryService.getCoursesByPlace(1L, 999L)).willReturn(List.of());
 
         mockMvc.perform(get("/api/v1/places/{placeId}/courses", 999L)
                         .header("Authorization", "Bearer " + TOKEN))

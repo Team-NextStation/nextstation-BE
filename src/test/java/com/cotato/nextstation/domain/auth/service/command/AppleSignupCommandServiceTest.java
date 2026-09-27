@@ -3,6 +3,7 @@ package com.cotato.nextstation.domain.auth.service.command;
 import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.domain.auth.exception.TermsErrorCode;
 import com.cotato.nextstation.domain.auth.repository.MemberTermsAgreementRepository;
+import com.cotato.nextstation.domain.auth.repository.PendingAppleCredentialRepository;
 import com.cotato.nextstation.domain.auth.util.AppleSignupTokenClaims;
 import com.cotato.nextstation.domain.auth.util.TermsAgreementValidator;
 import com.cotato.nextstation.domain.member.entity.AuthProvider;
@@ -11,6 +12,7 @@ import com.cotato.nextstation.domain.member.entity.Member;
 import com.cotato.nextstation.domain.member.entity.MemberSocialAccount;
 import com.cotato.nextstation.domain.member.repository.MemberRepository;
 import com.cotato.nextstation.domain.member.repository.MemberSocialAccountRepository;
+import com.cotato.nextstation.domain.member.repository.SocialOauthCredentialRepository;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.jwt.JwtProvider;
 import io.jsonwebtoken.Claims;
@@ -63,6 +65,12 @@ class AppleSignupCommandServiceTest {
     @Mock
     private TermsAgreementValidator termsAgreementValidator;
 
+    @Mock
+    private SocialOauthCredentialRepository socialOauthCredentialRepository;
+
+    @Mock
+    private PendingAppleCredentialRepository pendingAppleCredentialRepository;
+
     private static final String APPLE_SIGNUP_TOKEN = "apple-signup-token";
     private static final String PROVIDER_USER_ID = "000555.abcdef1234567890.0555";
 
@@ -102,6 +110,12 @@ class AppleSignupCommandServiceTest {
                 .build();
     }
 
+    private MemberSocialAccount savedSocialAccount() {
+        MemberSocialAccount socialAccount = socialAccount(1L);
+        ReflectionTestUtils.setField(socialAccount, "id", 10L);
+        return socialAccount;
+    }
+
     @Test
     @DisplayName("정상 요청이면 Member와 MemberSocialAccount가 생성되고 약관 동의가 저장되고 signupToken이 발급된다")
     void signup_success() {
@@ -111,6 +125,7 @@ class AppleSignupCommandServiceTest {
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.empty());
         given(memberRepository.save(any(Member.class))).willReturn(savedMember());
+        given(memberSocialAccountRepository.save(any(MemberSocialAccount.class))).willReturn(savedSocialAccount());
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
 
         // when
@@ -124,6 +139,53 @@ class AppleSignupCommandServiceTest {
     }
 
     @Test
+    @DisplayName("로그인 시점에 캐싱된 refresh_token이 있으면 SocialOauthCredential로 옮겨 저장한다")
+    void signup_success_attachesPendingCredential() {
+        // given
+        Claims claims = validClaims("user@privaterelay.appleid.com");
+        given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willReturn(claims);
+        given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
+                .willReturn(Optional.empty());
+        given(memberRepository.save(any(Member.class))).willReturn(savedMember());
+        given(memberSocialAccountRepository.save(any(MemberSocialAccount.class))).willReturn(savedSocialAccount());
+        given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
+        given(pendingAppleCredentialRepository.consume(PROVIDER_USER_ID)).willReturn(Optional.of("encrypted-refresh-token"));
+
+        // when
+        appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
+
+        // then
+        ArgumentCaptor<com.cotato.nextstation.domain.member.entity.SocialOauthCredential> captor =
+                ArgumentCaptor.forClass(com.cotato.nextstation.domain.member.entity.SocialOauthCredential.class);
+        verify(socialOauthCredentialRepository).save(captor.capture());
+        assertThat(captor.getValue().getMemberSocialAccountId()).isEqualTo(10L);
+        assertThat(captor.getValue().getProvider()).isEqualTo(AuthProvider.APPLE);
+        assertThat(captor.getValue().getRefreshToken()).isEqualTo("encrypted-refresh-token");
+    }
+
+    @Test
+    @DisplayName("캐싱된 refresh_token이 없어도(로그인 시점에 code를 안 보냈거나 만료됨) 가입 자체는 정상 처리된다")
+    void signup_success_noPendingCredential() {
+        // given
+        Claims claims = validClaims("user@privaterelay.appleid.com");
+        given(jwtProvider.parseClaims(APPLE_SIGNUP_TOKEN)).willReturn(claims);
+        given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
+                .willReturn(Optional.empty());
+        given(memberRepository.save(any(Member.class))).willReturn(savedMember());
+        given(memberSocialAccountRepository.save(any(MemberSocialAccount.class))).willReturn(savedSocialAccount());
+        given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
+        given(pendingAppleCredentialRepository.consume(PROVIDER_USER_ID)).willReturn(Optional.empty());
+
+        // when
+        var response = appleSignupCommandService.signup(APPLE_SIGNUP_TOKEN, List.of(1L), "127.0.0.1");
+
+        // then
+        assertThat(response.memberId()).isEqualTo(1L);
+        assertThat(response.signupToken()).isEqualTo("signup-token");
+        verify(socialOauthCredentialRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("Apple 이메일이 빈 문자열(미제공)이면 Member.email은 null로 저장된다")
     void signup_blankEmail_savedAsNull() {
         // given
@@ -132,6 +194,7 @@ class AppleSignupCommandServiceTest {
         given(memberSocialAccountRepository.findByProviderAndProviderUserId(AuthProvider.APPLE, PROVIDER_USER_ID))
                 .willReturn(Optional.empty());
         given(memberRepository.save(any(Member.class))).willReturn(savedMember());
+        given(memberSocialAccountRepository.save(any(MemberSocialAccount.class))).willReturn(savedSocialAccount());
         given(jwtProvider.generateToken(eq("1"), any(Map.class), any(Duration.class))).willReturn("signup-token");
 
         // when

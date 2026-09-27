@@ -1,14 +1,17 @@
 package com.cotato.nextstation.domain.place.service.query;
 
 import com.cotato.nextstation.domain.place.converter.PlaceConverter;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
 import com.cotato.nextstation.domain.place.dto.response.StationTagCountResponse;
 import com.cotato.nextstation.domain.place.entity.Place;
-import com.cotato.nextstation.domain.place.entity.PlaceTagMapping;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
 import com.cotato.nextstation.domain.place.repository.PlaceRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceRepository.HistoricalPlaceView;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository.ApprovedPlaceTagView;
 import com.cotato.nextstation.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -39,12 +42,24 @@ public class PlaceInfoQueryService {
         return placeConverter.toPlaceInfoResponses(places);
     }
 
+    public List<HistoricalPlaceInfoResponse> getHistoricalPlaceInfos(List<Long> placeIds) {
+        if (placeIds.isEmpty()) {
+            return List.of();
+        }
+        return placeRepository.findHistoricalPlacesByIdIn(placeIds).stream()
+                .map(this::toHistoricalPlaceInfo)
+                .toList();
+    }
+
     public List<String> getTopTagNames(List<Long> placeIds) {
-        List<PlaceTagMapping> mappings = placeTagMappingRepository.findByPlaceIdIn(placeIds);
+        if (placeIds.isEmpty()) {
+            return List.of();
+        }
+        List<ApprovedPlaceTagView> mappings = placeTagMappingRepository.findApprovedTagsByPlaceIdIn(placeIds);
 
         Map<String, Long> tagCountMap = mappings.stream()
                 .collect(Collectors.groupingBy(
-                        mapping -> mapping.getPlaceTag().getName().name(),
+                        ApprovedPlaceTagView::getTagName,
                         Collectors.counting()
                 ));
 
@@ -56,17 +71,21 @@ public class PlaceInfoQueryService {
     }
 
     public StationTagCountResponse getPlaceCountsByStationForTags(List<String> tags) {
-        List<PlaceTagName> tagNames = tags.stream()
+        if (tags.isEmpty()) {
+            return new StationTagCountResponse(Map.of());
+        }
+        List<String> tagNames = tags.stream()
                 .map(PlaceTagName::valueOf)
+                .map(PlaceTagName::name)
                 .toList();
 
-        List<PlaceTagMapping> mappings = placeTagMappingRepository.findByPlaceTagNameIn(tagNames);
+        List<ApprovedPlaceTagView> mappings = placeTagMappingRepository.findApprovedTagsByTagNameIn(tagNames);
 
         Map<Long, Map<String, Long>> result = mappings.stream()
                 .collect(Collectors.groupingBy(
-                        mapping -> mapping.getPlace().getStationId(),
+                        ApprovedPlaceTagView::getStationId,
                         Collectors.groupingBy(
-                                mapping -> mapping.getPlaceTag().getName().name(),
+                                ApprovedPlaceTagView::getTagName,
                                 Collectors.counting()
                         )
                 ));
@@ -78,16 +97,30 @@ public class PlaceInfoQueryService {
         if (placeIds.isEmpty()) {
             return Map.of();
         }
-        List<PlaceTagMapping> mappings = placeTagMappingRepository.findByPlaceIdIn(placeIds);
+        List<ApprovedPlaceTagView> mappings = placeTagMappingRepository.findApprovedTagsByPlaceIdIn(placeIds);
 
         return mappings.stream()
                 .collect(Collectors.groupingBy(
-                        mapping -> mapping.getPlace().getId(),
+                        ApprovedPlaceTagView::getPlaceId,
                         Collectors.mapping(
-                                mapping -> mapping.getPlaceTag().getName().name(),
+                                ApprovedPlaceTagView::getTagName,
                                 Collectors.toList()
                         )
                 ));
+    }
+
+    private HistoricalPlaceInfoResponse toHistoricalPlaceInfo(HistoricalPlaceView place) {
+        return new HistoricalPlaceInfoResponse(
+                place.getPlaceId(),
+                place.getPlaceName(),
+                place.getDescription(),
+                place.getCategoryCode(),
+                place.getCategoryName(),
+                place.getImageUrl(),
+                place.getXCoordinate(),
+                place.getYCoordinate(),
+                PlaceStatus.valueOf(place.getPlaceStatus())
+        );
     }
 
 }

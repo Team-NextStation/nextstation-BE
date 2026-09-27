@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.journal.repository;
 
+import com.cotato.nextstation.domain.moderation.dto.ReportTarget;
 import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.station.entity.LineCode;
 import org.springframework.data.domain.Pageable;
@@ -17,6 +18,11 @@ public interface JournalRepository extends JpaRepository<Journal, Long> {
 
     boolean existsByIdAndMember_Id(Long journalId, Long memberId);
     boolean existsByMemberStampId(Long memberStampId);
+
+    // 신고 대상 확인용, @SQLRestriction으로 삭제된 일지는 제외되므로 결과가 비면 신고할 수 없는 대상이다.
+    @Query("SELECT new com.cotato.nextstation.domain.moderation.dto.ReportTarget(j.member.id, j.title) "
+            + "FROM Journal j WHERE j.id = :journalId")
+    Optional<ReportTarget> findReportTargetById(@Param("journalId") Long journalId);
 
     // 이미 여행일지가 작성된 memberStampId 목록 조회
     @Query("SELECT j.memberStampId FROM Journal j WHERE j.member.id = :memberId")

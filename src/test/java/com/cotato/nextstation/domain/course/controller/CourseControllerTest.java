@@ -12,6 +12,7 @@ import com.cotato.nextstation.domain.course.dto.response.CourseCopyPreviewRespon
 import com.cotato.nextstation.domain.course.dto.response.CourseShareResponse;
 import com.cotato.nextstation.domain.course.dto.response.CourseUpdateResponse;
 import com.cotato.nextstation.domain.course.exception.CourseErrorCode;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.course.service.command.CourseCommandService;
 import com.cotato.nextstation.domain.course.service.command.CourseLikeCommandService;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
@@ -365,12 +366,12 @@ class CourseControllerTest {
     @Test
     @DisplayName("내 코스로 만들기 화면 조회는 200과 코스 구성/장소 설명을 반환한다")
     void getCourseCopyPreview_success() throws Exception {
-        given(courseQueryService.getCourseCopyPreview(7L)).willReturn(
+        given(courseQueryService.getCourseCopyPreview(1L, 7L)).willReturn(
                 new CourseCopyPreviewResponse(7L, "보문역 환승여행 코스", 123L, "보문역",
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6),
                         List.of(new CoursePlaceDetailResponse(11L, "보문숲길도서관",
                                 "혼자 조용히 머물기 좋은 동네 도서관", "CULTURE", "문화공간",
-                                null, 127.0345, 37.5804, 1))));
+                                null, 127.0345, 37.5804, PlaceStatus.APPROVED, 1))));
 
         mockMvc.perform(get("/api/v1/courses/{courseId}/copy-preview", 7L)
                         .header("Authorization", "Bearer " + TOKEN))
@@ -382,13 +383,14 @@ class CourseControllerTest {
                 // 이 화면 카드의 부제로 쓰는 값이라 빠지면 안 된다
                 .andExpect(jsonPath("$.data.places[0].description").value("혼자 조용히 머물기 좋은 동네 도서관"))
                 .andExpect(jsonPath("$.data.places[0].xCoordinate").value(127.0345))
+                .andExpect(jsonPath("$.data.places[0].placeStatus").value("APPROVED"))
                 .andExpect(jsonPath("$.data.places[0].orderNum").value(1));
     }
 
     @Test
     @DisplayName("공개되지 않은 코스의 내 코스로 만들기 화면을 조회하면 404를 반환한다")
     void getCourseCopyPreview_notPublic() throws Exception {
-        given(courseQueryService.getCourseCopyPreview(7L))
+        given(courseQueryService.getCourseCopyPreview(1L, 7L))
                 .willThrow(new CustomException(CourseErrorCode.COURSE_NOT_FOUND));
 
         mockMvc.perform(get("/api/v1/courses/{courseId}/copy-preview", 7L)
@@ -405,7 +407,7 @@ class CourseControllerTest {
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6),
                         List.of(new CoursePlaceDetailResponse(11L, "보문숲길도서관",
                                 "혼자 조용히 머물기 좋은 동네 도서관", "CULTURE", "문화공간",
-                                null, 127.0345, 37.5804, 1))));
+                                null, 127.0345, 37.5804, PlaceStatus.APPROVED, 1))));
 
         mockMvc.perform(get("/api/v1/courses/share/{shareToken}", "share-token-7"))
                 .andExpect(status().isOk())

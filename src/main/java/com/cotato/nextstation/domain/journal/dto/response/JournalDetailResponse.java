@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.journal.dto.response;
 
 import com.cotato.nextstation.domain.journal.enums.TravelDuration;
+import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.station.dto.response.LineSummaryResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -84,6 +85,9 @@ public record JournalDetailResponse(
 
             @Schema(description = "y좌표", example = "37.456")
             Double yCoordinate,
+
+            @Schema(description = "현재 장소 상태. 비승인 상태면 상세 이동과 지도 핀을 제한하는 데 사용한다", example = "APPROVED")
+            PlaceStatus placeStatus,
 
             String review,
             String imageUrl

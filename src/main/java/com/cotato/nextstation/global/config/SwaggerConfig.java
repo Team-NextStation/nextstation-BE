@@ -13,7 +13,6 @@ import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.info.License;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
-import io.swagger.v3.oas.annotations.servers.Server;
 
 import java.util.Set;
 
@@ -23,11 +22,7 @@ import java.util.Set;
                 version = "v1.0.0",
                 description = "NextStation Backend API Documentation",
                 license = @License(name = "Apache 2.0", url = "http://www.apache.org/licenses/LICENSE-2.0")
-        ),
-        servers = {
-                @Server(url = "http://localhost:8080", description = "Local Development"),
-                @Server(url = "https://3.37.77.188.nip.io", description = "Production Server"),
-        }
+        )
 )
 // signupTokenAuth: 회원가입 비밀번호 설정(/signup) 응답의 signupToken, 프로필 설정(/profile) API 전용
 @SecurityScheme(
@@ -62,7 +57,8 @@ public class SwaggerConfig {
             "/api/v1/explore/courses/popular",
             "/api/v1/explore/concept-tours",
             "/api/v1/explore/concept-tours/{conceptTourId}/courses",
-            "/api/v1/journals/{journalId}"
+            "/api/v1/journals/{journalId}",
+            "/api/v1/places/{placeId}"
     );
 
     /**
@@ -192,6 +188,16 @@ public class SwaggerConfig {
                 .build();
     }
 
+    // 콘텐츠 신고 관련 API
+    @Bean
+    public GroupedOpenApi reportApi() {
+        return GroupedOpenApi.builder()
+                .group("Report")
+                .displayName("Report API")
+                .packagesToScan("com.cotato.nextstation.domain.moderation.controller")
+                .build();
+    }
+
     // 여행일지 관련 API
     @Bean
     public GroupedOpenApi journalApi() {
@@ -199,6 +205,17 @@ public class SwaggerConfig {
                 .group("Journal")
                 .displayName("Journal API")
                 .packagesToScan("com.cotato.nextstation.domain.journal.controller")
+                .build();
+    }
+
+    // 사용자 차단 관련 API
+    @Bean
+    public GroupedOpenApi blockApi() {
+        return GroupedOpenApi.builder()
+                .group("Block")
+                .displayName("Block API")
+                .packagesToScan("com.cotato.nextstation.domain.block.controller")
+                .pathsToMatch("/api/v1/members/blocks/**")
                 .build();
     }
 

@@ -144,13 +144,16 @@ public class ImageController {
                     - 프로필 이미지 교체, 여행일지 삭제 등 기존 이미지가 더 이상 필요 없을 때 사용한다.
                     - 이미지 교체 시 흐름:  새 presigned URL 발급 → S3 업로드 → 도메인 URL 갱신 → 이 API로 기존 이미지 삭제
                     - 로그인한 본인의 이미지만 삭제할 수 있다.
+                    - 장소 사진(`images/static/places/**`)은 소유자가 없으므로 관리자만 삭제할 수 있다.
+                    - 장소에 등록된 사진은 먼저 장소 수정 API의 `deleteImageIds`로 연결을 끊은 뒤 삭제한다. 연결이 남아 있으면 409가 발생한다.
                     """
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "삭제 성공"),
             @ApiResponse(responseCode = "400", description = "요청 값 검증 실패"),
             @ApiResponse(responseCode = "401", description = "인증 실패 (`GlobalErrorCode.EXPIRED_TOKEN`/`INVALID_TOKEN`/`UNAUTHORIZED`)"),
-            @ApiResponse(responseCode = "403", description = "본인 이미지가 아님"),
+            @ApiResponse(responseCode = "403", description = "본인 이미지가 아니거나 관리자가 아님"),
+            @ApiResponse(responseCode = "409", description = "장소가 사용 중인 사진 (`ImageErrorCode.PLACE_IMAGE_IN_USE`)"),
     })
     @SecurityRequirement(name = "accessTokenAuth")
     @DeleteMapping
