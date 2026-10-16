@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.auth.controller;
 
-import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
+import com.cotato.nextstation.domain.auth.dto.response.AppleLoginResponse;
+import com.cotato.nextstation.domain.auth.repository.AppleWebLoginCodeRepository;
 import com.cotato.nextstation.domain.auth.repository.AppleWebLoginStateRepository;
 import com.cotato.nextstation.domain.auth.service.query.AppleLoginQueryService;
 import com.cotato.nextstation.domain.auth.service.result.AppleLoginResult;
@@ -8,6 +9,7 @@ import com.cotato.nextstation.domain.auth.service.result.AppleLoginResultType;
 import com.cotato.nextstation.domain.auth.util.RefreshTokenCookieFactory;
 import com.cotato.nextstation.domain.member.entity.MemberRole;
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
 import com.cotato.nextstation.global.exception.GlobalExceptionHandler;
 import com.cotato.nextstation.global.jwt.JwtProvider;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -53,6 +56,9 @@ class AppleWebAuthControllerTest {
     AppleWebLoginStateRepository appleWebLoginStateRepository;
 
     @MockitoBean
+    AppleWebLoginCodeRepository appleWebLoginCodeRepository;
+
+    @MockitoBean
     RefreshTokenCookieFactory refreshTokenCookieFactory;
 
     @MockitoBean
@@ -76,8 +82,8 @@ class AppleWebAuthControllerTest {
     }
 
     @Test
-    @DisplayName("콜백이 LOGIN_SUCCESS면 refreshToken 쿠키를 내리고 accessToken을 담아 프론트로 리다이렉트한다")
-    void callback_loginSuccess_setsCookieAndRedirects() throws Exception {
+    @DisplayName("콜백이 LOGIN_SUCCESS면 refreshToken 쿠키를 내리고, accessToken은 노출하지 않고 1회용 code만 담아 리다이렉트한다")
+    void callback_loginSuccess_setsCookieAndRedirectsWithCode() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
         given(appleLoginQueryService.login("id-token", "raw-nonce")).willReturn(
                 new AppleLoginResult(AppleLoginResultType.LOGIN_SUCCESS, 1L, "access-token", "refresh-token",
@@ -92,15 +98,17 @@ class AppleWebAuthControllerTest {
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.startsWith("https://nextstation.app/auth/apple/callback?"),
-                        org.hamcrest.Matchers.containsString("resultType=LOGIN_SUCCESS"),
-                        org.hamcrest.Matchers.containsString("accessToken=access-token")
+                        org.hamcrest.Matchers.containsString("code="),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("accessToken="))
                 )))
                 .andExpect(cookie().value("refreshToken", "refresh-token"));
+
+        then(appleWebLoginCodeRepository).should().save(anyString(), any(AppleLoginResponse.class));
     }
 
     @Test
-    @DisplayName("콜백이 NEW_MEMBER면 쿠키 없이 appleSignupToken만 담아 리다이렉트한다")
-    void callback_newMember_redirectsWithSignupToken() throws Exception {
+    @DisplayName("콜백이 NEW_MEMBER면 쿠키 없이 code만 담아 리다이렉트한다")
+    void callback_newMember_redirectsWithCode() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
         given(appleLoginQueryService.login("id-token", "raw-nonce")).willReturn(
                 new AppleLoginResult(AppleLoginResultType.NEW_MEMBER, null, null, null,
@@ -111,18 +119,15 @@ class AppleWebAuthControllerTest {
                         .param("state", "valid-state")
                         .param("id_token", "id-token"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
-                        org.hamcrest.Matchers.containsString("resultType=NEW_MEMBER"),
-                        org.hamcrest.Matchers.containsString("appleSignupToken=apple-signup-token")
-                )))
+                .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("code=")))
                 .andExpect(cookie().doesNotExist("refreshToken"));
 
         then(refreshTokenCookieFactory).shouldHaveNoInteractions();
     }
 
     @Test
-    @DisplayName("PENDING_PROFILE이면 signupToken을 담아 리다이렉트한다")
-    void callback_pendingProfile_redirectsWithSignupToken() throws Exception {
+    @DisplayName("PENDING_PROFILE이면 code만 담아 리다이렉트한다")
+    void callback_pendingProfile_redirectsWithCode() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
         given(appleLoginQueryService.login("id-token", "raw-nonce")).willReturn(
                 new AppleLoginResult(AppleLoginResultType.PENDING_PROFILE, 1L, null, null,
@@ -133,24 +138,39 @@ class AppleWebAuthControllerTest {
                         .param("state", "valid-state")
                         .param("id_token", "id-token"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
-                        org.hamcrest.Matchers.containsString("resultType=PENDING_PROFILE"),
-                        org.hamcrest.Matchers.containsString("signupToken=signup-token"),
-                        org.hamcrest.Matchers.containsString("restored=true")
-                )));
+                .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("code=")));
     }
 
     @Test
-    @DisplayName("알 수 없거나 만료된 state면 401을 반환하고 Apple 검증을 시도하지 않는다")
-    void callback_unknownState_returnsUnauthorized() throws Exception {
+    @DisplayName("알 수 없거나 만료된 state면 실패 사유를 담아 프론트로 리다이렉트하고, Apple 검증을 시도하지 않는다")
+    void callback_unknownState_redirectsWithFailure() throws Exception {
         given(appleWebLoginStateRepository.consume("unknown-state")).willReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/auth/apple/web/callback")
                         .param("state", "unknown-state")
                         .param("id_token", "id-token"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code")
-                        .value(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN.getCode()));
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("resultType=FAILURE"),
+                        org.hamcrest.Matchers.containsString("error=invalid_state")
+                )));
+
+        then(appleLoginQueryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("Apple이 사용자 취소/인증 실패로 id_token 없이 error만 보내면 프론트로 리다이렉트하고, Apple 검증을 시도하지 않는다")
+    void callback_appleError_redirectsWithFailure() throws Exception {
+        given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
+
+        mockMvc.perform(post("/api/v1/auth/apple/web/callback")
+                        .param("state", "valid-state")
+                        .param("error", "user_cancelled_authorize"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("resultType=FAILURE"),
+                        org.hamcrest.Matchers.containsString("error=user_cancelled_authorize")
+                )));
 
         then(appleLoginQueryService).shouldHaveNoInteractions();
     }
