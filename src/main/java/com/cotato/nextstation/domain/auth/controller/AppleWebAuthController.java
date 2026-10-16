@@ -1,13 +1,13 @@
 package com.cotato.nextstation.domain.auth.controller;
 
-import com.cotato.nextstation.domain.auth.exception.AuthErrorCode;
+import com.cotato.nextstation.domain.auth.dto.response.AppleLoginResponse;
+import com.cotato.nextstation.domain.auth.repository.AppleWebLoginCodeRepository;
 import com.cotato.nextstation.domain.auth.repository.AppleWebLoginStateRepository;
 import com.cotato.nextstation.domain.auth.service.query.AppleLoginQueryService;
 import com.cotato.nextstation.domain.auth.service.result.AppleLoginResult;
 import com.cotato.nextstation.domain.auth.service.result.AppleLoginResultType;
 import com.cotato.nextstation.domain.auth.util.AppleNonceHasher;
 import com.cotato.nextstation.domain.auth.util.RefreshTokenCookieFactory;
-import com.cotato.nextstation.global.exception.CustomException;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +25,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.net.URI;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Optional;
 
 /**
  * 웹 브라우저용 Apple 로그인(Services ID, Authorization Code Flow).
@@ -47,8 +48,11 @@ public class AppleWebAuthController {
     private static final int STATE_BYTE_LENGTH = 32;
     private static final int NONCE_BYTE_LENGTH = 32;
 
+    private static final int CODE_BYTE_LENGTH = 32;
+
     private final AppleLoginQueryService appleLoginQueryService;
     private final AppleWebLoginStateRepository appleWebLoginStateRepository;
+    private final AppleWebLoginCodeRepository appleWebLoginCodeRepository;
     private final RefreshTokenCookieFactory refreshTokenCookieFactory;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -58,12 +62,14 @@ public class AppleWebAuthController {
 
     public AppleWebAuthController(AppleLoginQueryService appleLoginQueryService,
                                    AppleWebLoginStateRepository appleWebLoginStateRepository,
+                                   AppleWebLoginCodeRepository appleWebLoginCodeRepository,
                                    RefreshTokenCookieFactory refreshTokenCookieFactory,
                                    @Value("${apple.oauth.web-client-id}") String webClientId,
                                    @Value("${apple.oauth.web-redirect-uri}") String webRedirectUri,
                                    @Value("${apple.oauth.web-frontend-redirect-uri}") String webFrontendRedirectUri) {
         this.appleLoginQueryService = appleLoginQueryService;
         this.appleWebLoginStateRepository = appleWebLoginStateRepository;
+        this.appleWebLoginCodeRepository = appleWebLoginCodeRepository;
         this.refreshTokenCookieFactory = refreshTokenCookieFactory;
         this.webClientId = webClientId;
         this.webRedirectUri = webRedirectUri;
@@ -96,44 +102,71 @@ public class AppleWebAuthController {
 
     // Apple이 로그인 완료 후 여기로 POST(form_post)한다 - 브라우저가 아니라 Apple 서버가 보내는 폼 제출이라
     // Content-Type이 application/x-www-form-urlencoded로 온다.
+    // id_token/error는 둘 다 필수로 받으면 안 된다 - 사용자가 Apple 로그인 화면에서 취소하거나 인증에 실패하면
+    // Apple은 id_token 없이 state와 error만 보낸다. 여기서 필수 파라미터로 막아버리면 Spring이 400을 직접
+    // 렌더링해서 사용자가 프론트로 돌아가지 못하므로, 둘 다 선택값으로 받아 실패도 프론트로 리다이렉트해준다.
     @PostMapping("/callback")
     public void callback(@RequestParam("state") String state,
-                          @RequestParam("id_token") String identityToken,
+                          @RequestParam(value = "id_token", required = false) String identityToken,
+                          @RequestParam(value = "error", required = false) String error,
                           HttpServletResponse httpResponse) {
 
-        String nonce = appleWebLoginStateRepository.consume(state)
-                .orElseThrow(() -> {
-                    log.warn("알 수 없거나 만료된 state로 Apple 웹 로그인 콜백 시도");
-                    return new CustomException(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN);
-                });
+        Optional<String> nonce = appleWebLoginStateRepository.consume(state);
+        if (nonce.isEmpty()) {
+            log.warn("알 수 없거나 만료된 state로 Apple 웹 로그인 콜백 시도");
+            redirectToFrontend(httpResponse, buildFailureRedirectUri("invalid_state"));
+            return;
+        }
+        if (error != null || identityToken == null) {
+            log.warn("Apple 웹 로그인 실패 콜백: state={}, error={}", state, error);
+            redirectToFrontend(httpResponse, buildFailureRedirectUri(error != null ? error : "missing_id_token"));
+            return;
+        }
 
-        AppleLoginResult result = appleLoginQueryService.login(identityToken, nonce);
+        AppleLoginResult result = appleLoginQueryService.login(identityToken, nonce.get());
 
         if (result.resultType() == AppleLoginResultType.LOGIN_SUCCESS) {
             ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
             httpResponse.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
         }
 
-        URI redirectUri = buildFrontendRedirectUri(result);
-        httpResponse.setStatus(HttpStatus.FOUND.value());
-        httpResponse.setHeader(HttpHeaders.LOCATION, redirectUri.toString());
+        redirectToFrontend(httpResponse, buildSuccessRedirectUri(result));
     }
 
-    // accessToken/signupToken처럼 짧게 사는 값만 쿼리 파라미터로 실어 보낸다 - 프론트가 받자마자 URL에서 지워야 한다.
-    // refreshToken은 여기 절대 담지 않는다(이미 httpOnly 쿠키로 내려갔다).
-    private URI buildFrontendRedirectUri(AppleLoginResult result) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(webFrontendRedirectUri)
-                .queryParam("resultType", result.resultType());
+    // accessToken 등 민감한 값은 리다이렉트 쿼리 파라미터에 직접 싣지 않는다 - 브라우저 히스토리/리퍼러/서버
+    // 접근 로그에 평문으로 남을 수 있기 때문이다. 대신 결과를 1회용 code로 교환해 Redis에 짧게 저장해두고,
+    // 프론트에는 code만 넘겨서 별도 POST API(AppleWebLoginExchangeController)로 교환하게 한다.
+    private URI buildSuccessRedirectUri(AppleLoginResult result) {
+        AppleLoginResponse response = new AppleLoginResponse(
+                result.resultType(),
+                result.memberId(),
+                result.accessToken(),
+                result.signupToken(),
+                result.appleSignupToken(),
+                result.restored(),
+                result.role()
+        );
 
-        switch (result.resultType()) {
-            case LOGIN_SUCCESS -> builder.queryParam("accessToken", result.accessToken())
-                    .queryParam("restored", result.restored());
-            case PENDING_PROFILE -> builder.queryParam("signupToken", result.signupToken())
-                    .queryParam("restored", result.restored());
-            case NEW_MEMBER -> builder.queryParam("appleSignupToken", result.appleSignupToken());
-        }
+        String code = randomToken(CODE_BYTE_LENGTH);
+        appleWebLoginCodeRepository.save(code, response);
 
-        return builder.build().toUri();
+        return UriComponentsBuilder.fromUriString(webFrontendRedirectUri)
+                .queryParam("code", code)
+                .build()
+                .toUri();
+    }
+
+    private URI buildFailureRedirectUri(String error) {
+        return UriComponentsBuilder.fromUriString(webFrontendRedirectUri)
+                .queryParam("resultType", "FAILURE")
+                .queryParam("error", error)
+                .build()
+                .toUri();
+    }
+
+    private void redirectToFrontend(HttpServletResponse httpResponse, URI redirectUri) {
+        httpResponse.setStatus(HttpStatus.FOUND.value());
+        httpResponse.setHeader(HttpHeaders.LOCATION, redirectUri.toString());
     }
 
     private String randomToken(int byteLength) {
