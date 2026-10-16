@@ -85,7 +85,7 @@ class AppleWebAuthControllerTest {
     @DisplayName("콜백이 LOGIN_SUCCESS면 refreshToken 쿠키를 내리고, accessToken은 노출하지 않고 1회용 code만 담아 리다이렉트한다")
     void callback_loginSuccess_setsCookieAndRedirectsWithCode() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
-        given(appleLoginQueryService.login("id-token", "raw-nonce")).willReturn(
+        given(appleLoginQueryService.login("id-token", "raw-nonce", null)).willReturn(
                 new AppleLoginResult(AppleLoginResultType.LOGIN_SUCCESS, 1L, "access-token", "refresh-token",
                         null, null, false, MemberRole.USER)
         );
@@ -107,10 +107,28 @@ class AppleWebAuthControllerTest {
     }
 
     @Test
+    @DisplayName("Apple이 code를 함께 보내면 그대로 로그인 판별 서비스에 전달한다")
+    void callback_withAuthorizationCode_passesCodeToLoginService() throws Exception {
+        given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
+        given(appleLoginQueryService.login("id-token", "raw-nonce", "auth-code")).willReturn(
+                new AppleLoginResult(AppleLoginResultType.NEW_MEMBER, null, null, null,
+                        null, "apple-signup-token", false, null)
+        );
+
+        mockMvc.perform(post("/api/v1/auth/apple/web/callback")
+                        .param("state", "valid-state")
+                        .param("id_token", "id-token")
+                        .param("code", "auth-code"))
+                .andExpect(status().isFound());
+
+        then(appleLoginQueryService).should().login("id-token", "raw-nonce", "auth-code");
+    }
+
+    @Test
     @DisplayName("콜백이 NEW_MEMBER면 쿠키 없이 code만 담아 리다이렉트한다")
     void callback_newMember_redirectsWithCode() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
-        given(appleLoginQueryService.login("id-token", "raw-nonce")).willReturn(
+        given(appleLoginQueryService.login("id-token", "raw-nonce", null)).willReturn(
                 new AppleLoginResult(AppleLoginResultType.NEW_MEMBER, null, null, null,
                         null, "apple-signup-token", false, null)
         );
@@ -129,7 +147,7 @@ class AppleWebAuthControllerTest {
     @DisplayName("PENDING_PROFILE이면 code만 담아 리다이렉트한다")
     void callback_pendingProfile_redirectsWithCode() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
-        given(appleLoginQueryService.login("id-token", "raw-nonce")).willReturn(
+        given(appleLoginQueryService.login("id-token", "raw-nonce", null)).willReturn(
                 new AppleLoginResult(AppleLoginResultType.PENDING_PROFILE, 1L, null, null,
                         "signup-token", null, true, null)
         );
@@ -180,7 +198,7 @@ class AppleWebAuthControllerTest {
     void callback_invalidIdentityToken_propagatesException() throws Exception {
         given(appleWebLoginStateRepository.consume("valid-state")).willReturn(Optional.of("raw-nonce"));
         willThrow(new CustomException(AuthErrorCode.INVALID_APPLE_IDENTITY_TOKEN))
-                .given(appleLoginQueryService).login("bad-id-token", "raw-nonce");
+                .given(appleLoginQueryService).login("bad-id-token", "raw-nonce", null);
 
         mockMvc.perform(post("/api/v1/auth/apple/web/callback")
                         .param("state", "valid-state")

@@ -108,6 +108,7 @@ public class AppleWebAuthController {
     @PostMapping("/callback")
     public void callback(@RequestParam("state") String state,
                           @RequestParam(value = "id_token", required = false) String identityToken,
+                          @RequestParam(value = "code", required = false) String authorizationCode,
                           @RequestParam(value = "error", required = false) String error,
                           HttpServletResponse httpResponse) {
 
@@ -123,7 +124,9 @@ public class AppleWebAuthController {
             return;
         }
 
-        AppleLoginResult result = appleLoginQueryService.login(identityToken, nonce.get());
+        // response_type=code id_token으로 요청했으므로 code도 함께 온다 - 네이티브와 동일하게 신규 회원의
+        // Apple revoke 준비(refresh_token 선교환)를 위해 그대로 전달한다.
+        AppleLoginResult result = appleLoginQueryService.login(identityToken, nonce.get(), authorizationCode);
 
         if (result.resultType() == AppleLoginResultType.LOGIN_SUCCESS) {
             ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
