@@ -66,9 +66,11 @@ public class StampCourseController {
     @SecurityRequirement(name = "accessTokenAuth")
     @GetMapping("/stamps/stations/{stationId}/courses")
     public CommonResponse<StationPopularCoursesResponse> getPopularCoursesByStation(
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "역 ID", example = "12")
             @PathVariable Long stationId) {
-        return CommonResponse.success(stampCourseQueryService.getPopularCoursesByStation(stationId));
+        return CommonResponse.success(
+                stampCourseQueryService.getPopularCoursesByStation(principal.memberId(), stationId));
     }
 
 

@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.place.repository;
 
+import com.cotato.nextstation.domain.moderation.dto.ReportTarget;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+import static com.cotato.nextstation.domain.block.repository.MemberBlockRepository.NOT_BLOCKED_BY_VIEWER;
 
 public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> {
 
@@ -29,8 +31,11 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY pr.createdAt DESC")
-    List<PlaceReview> findVisibleReviewsByPlaceId(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceReview> findVisibleReviewsByPlaceId(@Param("placeId") Long placeId,
+                                                   @Param("currentMemberId") Long currentMemberId,
+                                                   Pageable pageable);
 
     // 좋아요 추가 시 원자적 증가 (동시성 안전)
     @Modifying
@@ -71,8 +76,11 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY pr.createdAt DESC, pr.id DESC")
-    List<PlaceReview> findByPlaceIdOrderByLatest(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceReview> findByPlaceIdOrderByLatest(@Param("placeId") Long placeId,
+                                                  @Param("currentMemberId") Long currentMemberId,
+                                                  Pageable pageable);
 
     // 장소 리뷰 목록 - 최신순, 커서 이후 페이지
     @Query("SELECT pr FROM PlaceReview pr " +
@@ -81,12 +89,14 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "AND (pr.createdAt < :createdAt OR (pr.createdAt = :createdAt AND pr.id < :reviewId)) " +
             "ORDER BY pr.createdAt DESC, pr.id DESC")
     List<PlaceReview> findByPlaceIdOrderByLatestAfterCursor(
             @Param("placeId") Long placeId,
             @Param("createdAt") LocalDateTime createdAt,
             @Param("reviewId") Long reviewId,
+            @Param("currentMemberId") Long currentMemberId,
             Pageable pageable);
 
     // 장소 리뷰 목록 - 추천순(likeCount 캐시 컬럼 기준), 최초 페이지
@@ -96,8 +106,11 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY pr.likeCount DESC, pr.id DESC")
-    List<PlaceReview> findByPlaceIdOrderByRecommend(@Param("placeId") Long placeId, Pageable pageable);
+    List<PlaceReview> findByPlaceIdOrderByRecommend(@Param("placeId") Long placeId,
+                                                     @Param("currentMemberId") Long currentMemberId,
+                                                     Pageable pageable);
 
     // 장소 리뷰 목록 - 추천순, 커서 이후 페이지
     @Query("SELECT pr FROM PlaceReview pr " +
@@ -106,12 +119,14 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND " + HAS_CONTENT + " " +
             "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "AND (pr.likeCount < :likeCount OR (pr.likeCount = :likeCount AND pr.id < :reviewId)) " +
             "ORDER BY pr.likeCount DESC, pr.id DESC")
     List<PlaceReview> findByPlaceIdOrderByRecommendAfterCursor(
             @Param("placeId") Long placeId,
             @Param("likeCount") long likeCount,
             @Param("reviewId") Long reviewId,
+            @Param("currentMemberId") Long currentMemberId,
             Pageable pageable);
 
     // 장소 리뷰 총 개수 (내용 없는 리뷰는 카운트에서도 제외)
@@ -126,13 +141,32 @@ public interface PlaceReviewRepository extends JpaRepository<PlaceReview, Long> 
             "WHERE pr.place.id = :placeId " +
             "AND j.isDeleted = false " +
             "AND " + HAS_CONTENT + " " +
-            "AND " + NOT_WITHDRAWN)
-    long countByPlaceId(@Param("placeId") Long placeId);
+            "AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER)
+    long countByPlaceId(@Param("placeId") Long placeId, @Param("currentMemberId") Long currentMemberId);
 
     // 여행일지에 연결된 장소 리뷰 리스트
     List<PlaceReview> findByJournalId(Long journalId);
 
+    // Place의 @SQLRestriction과 무관하게, 여행일지에 기록된 리뷰의 원래 place_id를 읽는다.
+    @Query(value = """
+            SELECT id AS reviewId, place_id AS placeId
+            FROM place_review
+            WHERE journal_id = :journalId AND is_deleted = false
+            """, nativeQuery = true)
+    List<ReviewPlaceView> findReviewPlaceIdsByJournalId(@Param("journalId") Long journalId);
+
 
     Optional<PlaceReview> findByJournalIdAndPlaceId(Long journalId, Long placeId);
+
+    // 신고 대상 확인용, 리뷰 작성자는 리뷰가 속한 여행일지의 작성자다.
+    @Query("SELECT new com.cotato.nextstation.domain.moderation.dto.ReportTarget(pr.journal.member.id, pr.review) "
+            + "FROM PlaceReview pr WHERE pr.id = :reviewId")
+    Optional<ReportTarget> findReportTargetById(@Param("reviewId") Long reviewId);
+
+    interface ReviewPlaceView {
+        Long getReviewId();
+        Long getPlaceId();
+    }
 
 }

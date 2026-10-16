@@ -5,8 +5,12 @@ import com.cotato.nextstation.domain.place.converter.AdminPlaceConverter;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceImageResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceTagResponse;
+import com.cotato.nextstation.domain.place.entity.PlaceTag;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
+import com.cotato.nextstation.domain.place.enums.PlaceTagName;
 import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
 import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository;
 import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository.AdminPlaceDetailView;
@@ -14,6 +18,7 @@ import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository.Admin
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceImageRepository.AdminPlaceImageView;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository;
+import com.cotato.nextstation.domain.place.repository.PlaceTagRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceTagMappingRepository.AdminPlaceTagView;
 import com.cotato.nextstation.global.exception.CustomException;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +35,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -54,6 +60,9 @@ class AdminPlaceQueryServiceTest {
     private PlaceTagMappingRepository placeTagMappingRepository;
 
     @Mock
+    private PlaceTagRepository placeTagRepository;
+
+    @Mock
     private PlaceImageRepository placeImageRepository;
 
     @Mock
@@ -65,7 +74,7 @@ class AdminPlaceQueryServiceTest {
         AdminPlaceView first = placeView(1L, "가게");
         AdminPlaceView extra = mock(AdminPlaceView.class);
         given(adminPlaceRepository.findAdminPlaces(
-                eq(3L), eq(10L), eq("CAFE"), eq("APPROVED"),
+                eq(3L), eq(10L), eq("CAFE"), eq(List.of("APPROVED")),
                 eq(null), eq(null), any(Pageable.class)))
                 .willReturn(List.of(first, extra));
         given(adminPlaceRepository.findAdminAvailableLines()).willReturn(List.of());
@@ -83,7 +92,7 @@ class AdminPlaceQueryServiceTest {
         given(adminPlaceConverter.toCardResponses(any(), any(), any())).willReturn(List.of());
 
         AdminPlaceListResponse response = adminPlaceQueryService.getPlaces(
-                ADMIN_ID, 3L, 10L, CategoryCode.CAFE, PlaceStatus.APPROVED, null, 1);
+                ADMIN_ID, 3L, 10L, CategoryCode.CAFE, List.of(PlaceStatus.APPROVED), null, 1);
 
         assertThat(response.hasNext()).isTrue();
         assertThat(response.nextCursor()).isNotBlank();
@@ -99,11 +108,11 @@ class AdminPlaceQueryServiceTest {
         AdminPlaceView extra = placeView(2L, "같은 장소");
         AdminPlaceView afterExtra = mock(AdminPlaceView.class);
         given(adminPlaceRepository.findAdminPlaces(
-                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(null), anyList(),
                 eq(null), eq(null), any(Pageable.class)))
                 .willReturn(List.of(first, extra));
         given(adminPlaceRepository.findAdminPlaces(
-                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(null), anyList(),
                 eq("같은 장소"), eq(1L), any(Pageable.class)))
                 .willReturn(List.of(extra, afterExtra));
         given(adminPlaceRepository.findAdminAvailableLines()).willReturn(List.of());
@@ -116,7 +125,7 @@ class AdminPlaceQueryServiceTest {
         assertThat(firstPage.hasNext()).isTrue();
         assertThat(secondPage.hasNext()).isTrue();
         verify(adminPlaceRepository).findAdminPlaces(
-                eq(null), eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(null), anyList(),
                 eq("같은 장소"), eq(1L), any(Pageable.class));
     }
 
@@ -138,10 +147,16 @@ class AdminPlaceQueryServiceTest {
         AdminPlaceDetailView place = mock(AdminPlaceDetailView.class);
         given(adminPlaceRepository.findAdminPlaceDetail(7L)).willReturn(Optional.of(place));
         given(placeTagMappingRepository.findAdminTags(List.of(7L))).willReturn(List.of());
-        given(placeImageRepository.findAdminImages(List.of(7L))).willReturn(List.of());
+        AdminPlaceImageView image = mock(AdminPlaceImageView.class);
+        given(image.getPlaceId()).willReturn(7L);
+        given(image.getImageId()).willReturn(11L);
+        given(image.getImageUrl()).willReturn("image-url");
+        given(placeImageRepository.findAdminImages(List.of(7L))).willReturn(List.of(image));
 
         AdminPlaceDetailResponse expected = mock(AdminPlaceDetailResponse.class);
-        given(adminPlaceConverter.toDetailResponse(place, List.of(), List.of())).willReturn(expected);
+        given(adminPlaceConverter.toDetailResponse(
+                place, List.of(), List.of(new AdminPlaceImageResponse(11L, "image-url"))))
+                .willReturn(expected);
 
         AdminPlaceDetailResponse response = adminPlaceQueryService.getPlaceDetail(ADMIN_ID, 7L);
 
@@ -158,6 +173,21 @@ class AdminPlaceQueryServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(PlaceErrorCode.PLACE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("활성 태그 선택지는 요청 코드와 화면 표시명을 함께 반환한다")
+    void getActiveTags_returnsCodeAndLabel() {
+        given(placeTagRepository.findAllByIsActiveTrueOrderByIdAsc()).willReturn(List.of(
+                PlaceTag.of(PlaceTagName.HOTPLACE, true),
+                PlaceTag.of(PlaceTagName.INDOOR, true)));
+
+        List<AdminPlaceTagResponse> response = adminPlaceQueryService.getActiveTags(ADMIN_ID);
+
+        assertThat(response).containsExactly(
+                new AdminPlaceTagResponse(PlaceTagName.HOTPLACE, "핫플레이스"),
+                new AdminPlaceTagResponse(PlaceTagName.INDOOR, "실내위주"));
+        verify(adminGuard).requireAdmin(ADMIN_ID);
     }
 
     private AdminPlaceView placeView(Long placeId, String placeName) {

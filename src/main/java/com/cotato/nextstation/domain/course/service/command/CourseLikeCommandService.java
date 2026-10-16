@@ -86,7 +86,7 @@ public class CourseLikeCommandService {
     public void cancelAllLikes(Long memberId, List<Long> exceptCourseIds) {
         Set<Long> excluded = exceptCourseIds == null ? Set.of() : Set.copyOf(exceptCourseIds);
 
-        List<Long> targetCourseIds = courseLikeRepository.findVisibleLikedCourseIds(memberId).stream()
+        List<Long> targetCourseIds = courseLikeRepository.findVisibleLikedCourseIds(memberId, memberId).stream()
                 .filter(courseId -> !excluded.contains(courseId))
                 .toList();
 

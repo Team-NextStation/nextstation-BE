@@ -20,4 +20,13 @@ class DiscordWebhookClientTest {
 
         assertThatCode(() -> client.send(Map.of("content", "리포트"))).doesNotThrowAnyException();
     }
+
+    @Test
+    @DisplayName("웹훅 URL이 비어 있으면 전송하지 않는다")
+    void send_blankUrlIsSkipped() {
+        // 상대 경로로 요청이 나가면 RestClient가 IllegalArgumentException을 던지므로 생략 여부를 가릴 수 있다
+        DiscordWebhookClient client = new DiscordWebhookClient("");
+
+        assertThatCode(() -> client.send(Map.of("content", "리포트"))).doesNotThrowAnyException();
+    }
 }

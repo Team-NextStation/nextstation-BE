@@ -182,9 +182,9 @@ class MemberControllerTest {
         // given
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
-        given(memberQueryService.getMemberProfile(2L))
+        given(memberQueryService.getMemberProfile(1L, 2L))
                 .willReturn(new OtherMemberProfileResponse(
-                        2L, "환승러2", "https://cdn.example.com/profile/2.png", 12L, 5L));
+                        2L, "환승러2", "https://cdn.example.com/profile/2.png", 12L, 5L, false));
 
         // when & then
         mockMvc.perform(get("/api/v1/members/2/profile")
@@ -239,7 +239,7 @@ class MemberControllerTest {
         // given
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
-        given(memberQueryService.getMemberProfile(2L))
+        given(memberQueryService.getMemberProfile(1L, 2L))
                 .willThrow(new CustomException(MemberErrorCode.MEMBER_NOT_FOUND));
 
         // when & then
@@ -255,7 +255,7 @@ class MemberControllerTest {
         // given
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
-        given(memberStampQueryService.getMemberStamps(2L)).willReturn(new MemberStampListResponse(
+        given(memberStampQueryService.getMemberStamps(1L, 2L)).willReturn(new MemberStampListResponse(
                 1, List.of(new MemberStampResponse(6L, "보문역",
                         new LineSummaryResponse(6L, "6호선", LineCode.LINE_6)))));
 
@@ -309,7 +309,7 @@ class MemberControllerTest {
         // given
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
-        given(memberStampQueryService.getMemberStamps(2L))
+        given(memberStampQueryService.getMemberStamps(1L, 2L))
                 .willThrow(new CustomException(MemberErrorCode.MEMBER_NOT_FOUND));
 
         // when & then
@@ -324,7 +324,7 @@ class MemberControllerTest {
         // given
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
-        given(courseQueryService.getMemberPublicCourses(2L, null, null)).willReturn(
+        given(courseQueryService.getMemberPublicCourses(1L, 2L, null, null)).willReturn(
                 new MemberCourseListResponse(
                         List.of(new MemberCourseCardResponse(7L, 20L, "보문역 환승여행 코스", 6L, "보문역",
                                 new LineSummaryResponse(6L, "6호선", LineCode.LINE_6),
@@ -385,7 +385,7 @@ class MemberControllerTest {
         // given
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
-        given(courseQueryService.getMemberPublicCourses(2L, null, null))
+        given(courseQueryService.getMemberPublicCourses(1L, 2L, null, null))
                 .willThrow(new CustomException(MemberErrorCode.MEMBER_NOT_FOUND));
 
         // when & then
@@ -401,7 +401,7 @@ class MemberControllerTest {
         given(jwtProvider.parseClaims(TOKEN)).willReturn(
                 Jwts.claims().subject("1").add("purpose", "ACCESS").build());
         willThrow(new CustomException(GlobalErrorCode.INVALID_PAGE_SIZE))
-                .given(courseQueryService).getMemberPublicCourses(2L, null, 100);
+                .given(courseQueryService).getMemberPublicCourses(1L, 2L, null, 100);
 
         // when & then
         mockMvc.perform(get("/api/v1/members/2/courses")

@@ -25,8 +25,7 @@ public record ProfileSetupRequest(
         @NotNull(message = "성별은 필수입니다.")
         Gender gender,
 
-        @Schema(description = "생년월일 (yyyyMMdd)", example = "20010101")
-        @NotNull(message = "생년월일은 필수입니다.")
+        @Schema(description = "생년월일 (yyyyMMdd, 선택)", example = "20010101")
         @Past(message = "생년월일은 오늘 이전 날짜여야 합니다.")
         @JsonFormat(pattern = "yyyyMMdd")
         LocalDate birthDate

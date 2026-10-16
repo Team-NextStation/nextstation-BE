@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.auth.client;
 
+import com.cotato.nextstation.domain.auth.client.dto.KakaoApiErrorResponse;
 import com.cotato.nextstation.domain.auth.client.dto.KakaoErrorResponse;
 import com.cotato.nextstation.domain.auth.client.dto.KakaoTokenResponse;
 import com.cotato.nextstation.domain.auth.client.dto.KakaoUserInfoResponse;
@@ -19,6 +20,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
@@ -30,6 +32,8 @@ public class KakaoOAuthClient {
 
     private static final String TOKEN_URI = "https://kauth.kakao.com/oauth/token";
     private static final String USER_INFO_URI = "https://kapi.kakao.com/v2/user/me?secure_resource=true";
+    private static final String UNLINK_URI = "https://kapi.kakao.com/v1/user/unlink";
+    private static final String ADMIN_KEY_PREFIX = "KakaoAK ";
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
@@ -37,14 +41,18 @@ public class KakaoOAuthClient {
     // 사용자의 인가코드 문제가 아니라 우리 앱의 카카오 콘솔 설정/연동 문제로 봐야 하는 error_code
     private static final Set<String> MISCONFIGURATION_ERROR_CODES = Set.of("KOE303", "KOE237");
 
+    private static final int NOT_LINKED_ERROR_CODE = -101;
+
     private final RestClient restClient;
     private final String clientId;
     private final String clientSecret;
     private final List<String> redirectUris;
+    private final String adminKey;
 
     public KakaoOAuthClient(@Value("${kakao.oauth.client-id}") String clientId,
                              @Value("${kakao.oauth.client-secret:}") String clientSecret,
-                             @Value("${kakao.oauth.redirect-uris}") List<String> redirectUris) {
+                             @Value("${kakao.oauth.redirect-uris}") List<String> redirectUris,
+                             @Value("${kakao.admin-key}") String adminKey) {
 
         // 목록이 비면 요청마다 런타임에 터지므로 부팅 시점에 실패시킨다
         if (redirectUris.isEmpty()) {
@@ -65,6 +73,7 @@ public class KakaoOAuthClient {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.redirectUris = List.copyOf(redirectUris);
+        this.adminKey = adminKey;
     }
 
     // code는 1회용/단기 만료라 재사용 시 카카오가 4xx를 반환한다.
@@ -126,7 +135,7 @@ public class KakaoOAuthClient {
     // 카카오 응답의 error/error_code로 "사용자 인가코드 문제(재사용·만료 등)"와 "우리 앱 설정/연동 문제"를 구분한다.
     // error_description은 인가코드 원문을 그대로 담고 있는 경우가 있어 절대 로그에 남기지 않는다.
     private CustomException mapTokenExchange4xx(RestClientResponseException e) {
-        KakaoErrorResponse error = parseErrorBody(e);
+        KakaoErrorResponse error = parseErrorBody(e, KakaoErrorResponse.class);
 
         if (error == null) {
             log.warn("카카오 토큰 교환 실패(4xx, 본문 파싱 불가): status={}", e.getStatusCode());
@@ -144,9 +153,9 @@ public class KakaoOAuthClient {
         return new CustomException(AuthErrorCode.INVALID_KAKAO_CODE);
     }
 
-    private KakaoErrorResponse parseErrorBody(RestClientResponseException e) {
+    private <T> T parseErrorBody(RestClientResponseException e, Class<T> type) {
         try {
-            return e.getResponseBodyAs(KakaoErrorResponse.class);
+            return e.getResponseBodyAs(type);
         } catch (Exception parseException) {
             return null;
         }
@@ -164,5 +173,50 @@ public class KakaoOAuthClient {
             log.warn("카카오 사용자 정보 조회 실패", e);
             throw new CustomException(GlobalErrorCode.EXTERNAL_API_ERROR);
         }
+    }
+
+    public boolean unlink(String providerUserId) {
+
+        if (adminKey.isBlank()) {
+            log.error("카카오 어드민 키가 비어 있어 연결 해제를 건너뛴다: providerUserId={}", providerUserId);
+            return false;
+        }
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("target_id_type", "user_id");
+        form.add("target_id", providerUserId);
+
+        try {
+            restClient.post()
+                    .uri(UNLINK_URI)
+                    .header(HttpHeaders.AUTHORIZATION, ADMIN_KEY_PREFIX + adminKey)
+                    .contentType(new MediaType(MediaType.APPLICATION_FORM_URLENCODED, StandardCharsets.UTF_8))
+                    .body(form)
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("카카오 연결 해제 완료: providerUserId={}", providerUserId);
+            return true;
+
+        } catch (RestClientResponseException e) {
+            return handleUnlinkFailure(e, providerUserId);
+
+        } catch (RestClientException e) {
+            log.warn("카카오 연결 해제 중 통신 오류: providerUserId={}", providerUserId, e);
+            return false;
+        }
+    }
+
+    private boolean handleUnlinkFailure(RestClientResponseException e, String providerUserId) {
+        KakaoApiErrorResponse error = parseErrorBody(e, KakaoApiErrorResponse.class);
+
+        if (error != null && error.code() != null && error.code() == NOT_LINKED_ERROR_CODE) {
+            log.info("이미 카카오 연결이 해제된 회원: providerUserId={}", providerUserId);
+            return true;
+        }
+
+        log.warn("카카오 연결 해제 실패: providerUserId={}, status={}, code={}",
+                providerUserId, e.getStatusCode(), error == null ? null : error.code());
+        return false;
     }
 }

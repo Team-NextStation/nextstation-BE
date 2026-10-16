@@ -4,6 +4,7 @@ import com.cotato.nextstation.domain.course.dto.response.CoursePlaceInfoResponse
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
 import com.cotato.nextstation.domain.journal.entity.Journal;
 import com.cotato.nextstation.domain.place.dto.request.PlaceReviewCreateRequest;
+import com.cotato.nextstation.domain.place.dto.request.PlaceReviewUpdateRequest;
 import com.cotato.nextstation.domain.place.entity.Place;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
 import com.cotato.nextstation.domain.place.exception.PlaceErrorCode;
@@ -11,6 +12,8 @@ import com.cotato.nextstation.domain.place.repository.PlaceRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewRepository;
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
+import com.cotato.nextstation.global.util.ProfanityFilter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +58,8 @@ class PlaceReviewCommandServiceTest {
     private CourseQueryService courseQueryService;
     @Mock
     private PlaceReviewImageSaver placeReviewImageSaver;
+    @Mock
+    private ProfanityFilter profanityFilter;
 
     private static final Long COURSE_ID = 1L;
     private static final Long PLACE_ID = 10L;
@@ -92,6 +97,32 @@ class PlaceReviewCommandServiceTest {
     private void stubSaveAllReturnsInput() {
         given(placeReviewRepository.saveAll(anyList()))
                 .willAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @Test
+    @DisplayName("금칙어가 포함된 장소 리뷰를 작성하면 저장하지 않고 400 예외가 발생한다")
+    void createPlaceReviews_bannedReview() {
+        given(profanityFilter.containsBannedWord("금칙어")).willReturn(true);
+
+        assertThatThrownBy(() -> placeReviewCommandService.createPlaceReviews(
+                journalFixture(), COURSE_ID, List.of(new PlaceReviewCreateRequest(PLACE_ID, "금칙어", null))))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(GlobalErrorCode.CONTAINS_BANNED_WORD.getMessage());
+
+        verifyNoInteractions(courseQueryService, placeRepository, placeReviewRepository, placeReviewImageRepository, placeReviewImageSaver);
+    }
+
+    @Test
+    @DisplayName("금칙어가 포함된 장소 리뷰를 수정하면 변경하지 않고 400 예외가 발생한다")
+    void updatePlaceReviews_bannedReview() {
+        given(profanityFilter.containsBannedWord("금칙어")).willReturn(true);
+
+        assertThatThrownBy(() -> placeReviewCommandService.updatePlaceReviews(
+                journalFixture(), List.of(new PlaceReviewUpdateRequest(PLACE_ID, "금칙어", null, null))))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(GlobalErrorCode.CONTAINS_BANNED_WORD.getMessage());
+
+        verifyNoInteractions(placeReviewRepository, placeReviewImageRepository, placeReviewImageSaver);
     }
 
     @Test

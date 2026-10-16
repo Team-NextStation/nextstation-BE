@@ -1,5 +1,6 @@
 package com.cotato.nextstation.domain.stamp.service.query;
 
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.member.exception.MemberErrorCode;
 import com.cotato.nextstation.domain.member.service.query.MemberExistenceQueryService;
 import com.cotato.nextstation.domain.stamp.converter.MemberStampConverter;
@@ -51,6 +52,9 @@ class MemberStampQueryServiceTest {
 
     @Mock
     private MemberStampConverter memberStampConverter;
+
+    @Mock
+    private MemberBlockRepository memberBlockRepository;
 
     private VisitedStationView stampView(Long stationId, String stationName, Long lineId, String lineName, LineCode lineCode) {
         VisitedStationView view = mock(VisitedStationView.class);
@@ -133,12 +137,29 @@ class MemberStampQueryServiceTest {
         given(memberStampRepository.findVisitedStationsByMemberId(2L)).willReturn(List.of(view));
 
         // when
-        MemberStampListResponse response = memberStampQueryService.getMemberStamps(2L);
+        MemberStampListResponse response = memberStampQueryService.getMemberStamps(1L, 2L);
 
         // then
         assertThat(response.stampCount()).isEqualTo(1);
         assertThat(response.stamps()).containsExactly(
                 new MemberStampResponse(6L, "보문역", new LineSummaryResponse(6L, "6호선", LineCode.LINE_6)));
+    }
+
+    @Test
+    @DisplayName("조회자와 상대 사이에 차단 관계가 있으면 조회 없이 빈 목록을 반환한다")
+    void getMemberStamps_blocked_returnsEmptyList() {
+        // given: 차단 안내는 프로필 카드(OtherMemberProfileResponse.blocked)에서만 노출하고,
+        // 탭은 빈 상태와 동일한 화면을 그리므로 여기서는 예외가 아니라 빈 목록으로 응답한다
+        given(memberExistenceQueryService.existsMember(2L)).willReturn(true);
+        given(memberBlockRepository.existsBetween(1L, 2L)).willReturn(true);
+
+        // when
+        MemberStampListResponse response = memberStampQueryService.getMemberStamps(1L, 2L);
+
+        // then
+        assertThat(response.stampCount()).isZero();
+        assertThat(response.stamps()).isEmpty();
+        verify(memberStampRepository, never()).findVisitedStationsByMemberId(any());
     }
 
     @Test
@@ -152,7 +173,7 @@ class MemberStampQueryServiceTest {
         given(memberStampRepository.findVisitedStationsByMemberId(2L)).willReturn(List.of(line3, noLine, line1));
 
         // when
-        MemberStampListResponse response = memberStampQueryService.getMemberStamps(2L);
+        MemberStampListResponse response = memberStampQueryService.getMemberStamps(1L, 2L);
 
         // then
         assertThat(response.stamps()).extracting(MemberStampResponse::stationId)
@@ -170,7 +191,7 @@ class MemberStampQueryServiceTest {
         given(memberStampRepository.findVisitedStationsByMemberId(2L)).willReturn(List.of(na, da, ga));
 
         // when
-        MemberStampListResponse response = memberStampQueryService.getMemberStamps(2L);
+        MemberStampListResponse response = memberStampQueryService.getMemberStamps(1L, 2L);
 
         // then
         assertThat(response.stamps()).extracting(MemberStampResponse::stationName)
@@ -184,7 +205,7 @@ class MemberStampQueryServiceTest {
         given(memberExistenceQueryService.existsMember(2L)).willReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> memberStampQueryService.getMemberStamps(2L))
+        assertThatThrownBy(() -> memberStampQueryService.getMemberStamps(1L, 2L))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(MemberErrorCode.MEMBER_NOT_FOUND.getMessage());
     }

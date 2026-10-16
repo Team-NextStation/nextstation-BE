@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.List;
 
 import static com.cotato.nextstation.domain.member.repository.MemberRepository.NOT_WITHDRAWN;
+import static com.cotato.nextstation.domain.block.repository.MemberBlockRepository.NOT_BLOCKED_BY_VIEWER;
 
 public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
 
@@ -59,8 +60,10 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
             "JOIN Course c ON c.id = cs.courseId " +
             "JOIN Journal j ON j.id = c.journalId " +
             "JOIN Member mem ON mem.id = c.memberId " +
-            "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN)
-    List<Long> findVisibleLikedCourseIds(@Param("memberId") Long memberId);
+            "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER)
+    List<Long> findVisibleLikedCourseIds(@Param("memberId") Long memberId,
+                                          @Param("currentMemberId") Long currentMemberId);
 
     // 좋아요한 코스 목록 (최근 좋아요순). 카드에 필요한 역/대표 호선까지 한 번에 가져온다(코스마다 조회하면 N+1).
     // 좋아요는 원본 참조라 원본이 삭제되거나 비공개로 바뀌면 목록에서도 빠져야 한다.
@@ -80,8 +83,11 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
             "JOIN Member mem ON mem.id = c.memberId " +
             "LEFT JOIN s.drawLine l " +
             "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY cs.createdAt DESC, cs.id DESC")
-    List<LikedCourseView> findLikedCourses(@Param("memberId") Long memberId, Pageable pageable);
+    List<LikedCourseView> findLikedCourses(@Param("memberId") Long memberId,
+                                            @Param("currentMemberId") Long currentMemberId,
+                                            Pageable pageable);
 
     // 다음 페이지. 정렬 기준이 좋아요 시각이라 커서도 코스 id가 아닌 course_like.id를 tie-breaker로 쓴다.
     @Query("SELECT cs.id AS likeId, cs.createdAt AS likedAt, " +
@@ -96,10 +102,12 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike, Long> {
             "LEFT JOIN s.drawLine l " +
             "WHERE cs.memberId = :memberId AND j.isPublic = true AND " + NOT_WITHDRAWN + " " +
             "AND (cs.createdAt < :likedAt OR (cs.createdAt = :likedAt AND cs.id < :likeId)) " +
+            "AND " + NOT_BLOCKED_BY_VIEWER + " " +
             "ORDER BY cs.createdAt DESC, cs.id DESC")
     List<LikedCourseView> findLikedCoursesAfterCursor(@Param("memberId") Long memberId,
                                                       @Param("likedAt") LocalDateTime likedAt,
                                                       @Param("likeId") Long likeId,
+                                                      @Param("currentMemberId") Long currentMemberId,
                                                       Pageable pageable);
 
     interface LikedCourseView {

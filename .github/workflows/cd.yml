@@ -1,11 +1,14 @@
-# CD: develop 브랜치에 머지되면 이미지를 빌드해 Docker Hub에 올리고,
+# CD: main 또는 develop에 머지되면 이미지를 빌드해 Docker Hub에 올리고,
 # EC2에 compose 파일을 복사한 뒤 최신 이미지로 컨테이너를 재배포한다.
+# EC2 한 대에서 두 스택이 돌아가므로 브랜치에 따라 배포 디렉토리와 이미지 태그가 갈린다.
+#   main    -> ~/app     (8080, :prod)
+#   develop -> ~/app-dev (8081, :dev)
 # 배포 후 헬스체크로 앱이 정상 기동됐는지 확인한다.
 name: CD
 
 on:
   push:
-    branches: [ develop ]   # develop에 push될 때 실행
+    branches: [ main, develop ]
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/nextstation-be
@@ -14,6 +17,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # 0. 브랜치별 배포 대상 결정
+      #    GitHub Environments를 쓰지 않는 이유: 환경 시크릿이 비면 에러 없이 레포 시크릿으로
+      #    폴백하므로, dev 값을 빠뜨리면 dev 배포가 운영 컨테이너를 덮어쓴다. if/else는 빠뜨릴 수 없다.
+      - name: Resolve deploy target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "DEPLOY_DIR=/home/ec2-user/app"     >> $GITHUB_ENV
+            echo "IMAGE_TAG=prod"                    >> $GITHUB_ENV
+            echo "HEALTH_URL=${{ secrets.BACKEND_HEALTH_URL }}"     >> $GITHUB_ENV
+          else
+            echo "DEPLOY_DIR=/home/ec2-user/app-dev" >> $GITHUB_ENV
+            echo "IMAGE_TAG=dev"                     >> $GITHUB_ENV
+            echo "HEALTH_URL=${{ secrets.BACKEND_HEALTH_URL_DEV }}" >> $GITHUB_ENV
+          fi
+
       # 1. 저장소 코드 체크아웃
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,10 +77,12 @@ jobs:
 
       # 7. 이미지 빌드 후 Docker Hub에 push
       #    --platform linux/amd64: EC2(amd64)에서 확실히 돌도록 아키텍처 고정
+      #    태그를 환경별로 가른다. 두 환경이 latest 하나를 공유하면 dev 빌드가 운영 태그를 덮어써 어느 이미지가 운영인지 알 수 없어진다.
+      #    sha 태그는 롤백용으로 유지한다.
       - name: Build & Push image
         run: |
           docker buildx build --platform linux/amd64 \
-            -t ${{ env.IMAGE_NAME }}:latest \
+            -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
             -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --push .
 
@@ -74,7 +94,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "docker-compose-prod.yml"
-          target: "/home/ec2-user/app/"
+          target: "${{ env.DEPLOY_DIR }}/"
           overwrite: true
 
       # 9. EC2에 SSH 접속해 재배포 + 헬스체크
@@ -83,32 +103,36 @@ jobs:
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DEPLOY_DIR: ${{ env.DEPLOY_DIR }}
+          HEALTH_URL: ${{ env.HEALTH_URL }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOCKER_USERNAME,DOCKER_PASSWORD
+          envs: DOCKER_USERNAME,DOCKER_PASSWORD,DEPLOY_DIR,HEALTH_URL
           script: |
-            cd /home/ec2-user/app
+            # 디렉토리가 없으면 잘못된 대상에 배포하는 것이므로 멈춘다
+            cd "$DEPLOY_DIR" || exit 1
 
             echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
             # 최신 이미지 받아서 컨테이너 재시작
+            # 각 디렉토리의 .env가 포트·태그·메모리 한도를 결정한다
             docker compose -f docker-compose-prod.yml pull
             docker compose -f docker-compose-prod.yml up -d
             docker image prune -f
 
             # 배포 후 헬스체크
             echo "Waiting for application health check..."
-            HEALTH_URL='${{ secrets.BACKEND_HEALTH_URL }}'
             if [ -z "$HEALTH_URL" ]; then
-              echo "BACKEND_HEALTH_URL secret is not set. Skipping health check."
-              exit 0
+              echo "Health check URL is not set for this branch. Aborting."
+              exit 1
             fi
 
             i=1
             while [ "$i" -le 30 ]; do
-              if curl -fsS "$HEALTH_URL"; then
+              # -o /dev/null: 헬스 응답 본문이 커서 로그를 덮지 않도록 버린다
+              if curl -fsS -o /dev/null "$HEALTH_URL"; then
                 echo "Application is healthy."
                 exit 0
               fi

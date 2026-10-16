@@ -14,6 +14,8 @@ import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.station.entity.Station;
 import com.cotato.nextstation.domain.station.repository.StationRepository;
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.exception.error.GlobalErrorCode;
+import com.cotato.nextstation.global.util.ProfanityFilter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ public class CourseCommandService {
     private final CourseConverter courseConverter;
     private final CourseViewCountUpdater courseViewCountUpdater;
     private final StationRepository stationRepository;
+    private final ProfanityFilter profanityFilter;
 
     /**
      * 코스 상세를 열었을 때 조회수를 올린다. 다른 도메인이 코스 상세 화면을 그릴 때 호출한다.
@@ -108,6 +111,7 @@ public class CourseCommandService {
     }
 
     public CourseCreateResponse createCourse(Long memberId, CourseCreateRequest request) {
+        validateUserText(request.name());
         validateDistinctPlaces(request.placeIds());
         validateDrawableStation(request.stationId());
 
@@ -123,6 +127,7 @@ public class CourseCommandService {
      * 저장 화면에서 이름 입력과 순서 변경이 함께 일어나므로 한 번의 요청으로 처리한다.
      */
     public CourseCreateResponse copyCourse(Long memberId, Long courseId, CourseCopyRequest request) {
+        validateUserText(request.name());
         Course original = findCopyableCourse(memberId, courseId);
         List<Long> placeIds = resolveCopiedPlaceOrder(courseId, request.placeIds());
 
@@ -137,6 +142,7 @@ public class CourseCommandService {
      * 한 트랜잭션으로 처리되므로 장소 순서 검증에 실패하면 이름 변경도 함께 롤백된다.
      */
     public CourseUpdateResponse updateCourse(Long memberId, Long courseId, CourseUpdateRequest request) {
+        validateUserText(request.name());
         if (request.placeIds() != null) {
             validateDistinctPlaces(request.placeIds());
         }
@@ -157,6 +163,12 @@ public class CourseCommandService {
     private void validateDistinctPlaces(List<Long> placeIds) {
         if (new HashSet<>(placeIds).size() != placeIds.size()) {
             throw new CustomException(CourseErrorCode.DUPLICATE_COURSE_PLACES);
+        }
+    }
+
+    private void validateUserText(String text) {
+        if (profanityFilter.containsBannedWord(text)) {
+            throw new CustomException(GlobalErrorCode.CONTAINS_BANNED_WORD);
         }
     }
 

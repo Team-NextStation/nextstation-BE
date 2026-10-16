@@ -2,11 +2,15 @@ package com.cotato.nextstation.domain.place.controller;
 
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCardResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceTagResponse;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceListResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceStatusUpdateResponse;
 import com.cotato.nextstation.domain.place.enums.CategoryCode;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.service.query.AdminPlaceQueryService;
 import com.cotato.nextstation.domain.place.dto.request.AdminPlaceCreateRequest;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceStatusUpdateRequest;
+import com.cotato.nextstation.domain.place.dto.request.AdminPlaceUpdateRequest;
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceCreateResponse;
 import com.cotato.nextstation.domain.place.dto.response.KakaoPlaceSearchResponse;
 import com.cotato.nextstation.domain.place.service.command.AdminPlaceCommandService;
@@ -16,6 +20,8 @@ import com.cotato.nextstation.global.security.AuthenticationPrincipal;
 import com.cotato.nextstation.global.security.JwtPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -28,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,6 +61,7 @@ public class AdminPlaceController {
                     - `lineId`는 대표 노선을 기준으로 한다.
                     - 필터를 여러 개 보내면 모든 조건을 만족하는 장소만 반환한다.
                     - 장소명 오름차순이며 `nextCursor`를 다음 요청의 `cursor`로 그대로 보낸다.
+                    - `status`를 여러 번 보내면 해당 상태를 모두 조회한다. 휴지통은 `status=REJECTED&status=DELETED`로 조회한다.
                     - `availableLines`와 `availableStations`는 첫 페이지에서만 제공한다.
                     - 대표 사진은 실제 장소 사진의 첫 장이며, 없을 때는 null을 반환한다.
                     """)
@@ -70,7 +78,8 @@ public class AdminPlaceController {
             @Parameter(description = "대표 호선 ID") @RequestParam(required = false) @Positive Long lineId,
             @Parameter(description = "역 ID") @RequestParam(required = false) @Positive Long stationId,
             @Parameter(description = "카테고리 코드") @RequestParam(required = false) CategoryCode categoryCode,
-            @Parameter(description = "장소 등록 상태") @RequestParam(required = false) PlaceStatus status,
+            @Parameter(description = "장소 등록 상태. 여러 번 보내면 해당 상태를 모두 조회한다. 생략하면 전체 상태를 조회한다")
+            @RequestParam(required = false) List<PlaceStatus> status,
             @Parameter(description = "다음 페이지 커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (1~50, 기본 10)")
             @RequestParam(required = false) @Min(1) @Max(50) Integer size) {
@@ -97,6 +106,23 @@ public class AdminPlaceController {
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal,
             @Parameter(description = "검색할 장소명") @RequestParam(required = false) String keyword) {
         return CommonResponse.success(adminPlaceQueryService.searchPlaces(principal.memberId(), keyword));
+    }
+
+    @Operation(
+            summary = "관리자 장소 활성 태그 선택지 조회",
+            description = "기존 장소 수정 화면에서 선택할 수 있는 활성 태그의 코드와 표시명을 조회한다."
+    )
+    @SecurityRequirement(name = "accessTokenAuth")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(ref = "#/components/schemas/CommonResponseListAdminPlaceTagResponse"))),
+            @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "403", description = "관리자 권한 없음")
+    })
+    @GetMapping("/tags")
+    public CommonResponse<List<AdminPlaceTagResponse>> getActiveTags(
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
+        return CommonResponse.success(adminPlaceQueryService.getActiveTags(principal.memberId()));
     }
 
     @Operation(
@@ -188,5 +214,70 @@ public class AdminPlaceController {
             @Valid @RequestBody AdminPlaceCreateRequest request,
             @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
         return CommonResponse.success(adminPlaceCommandService.createPlace(principal.memberId(), request));
+    }
+
+    @Operation(
+            summary = "관리자 장소 상태 변경",
+            description = """
+                    검토 중이거나 등록된 장소의 상태를 바꾼다. 관리자(ADMIN, ACTIVE)만 호출할 수 있다.
+
+                    | 동작 | 전이 | 사유 |
+                    | --- | --- | --- |
+                    | 승인 | `PENDING` → `APPROVED` | 없음 |
+                    | 반려 | `PENDING` → `REJECTED` | 필수 |
+                    | 삭제 | `PENDING`·`APPROVED` → `DELETED` | 필수 |
+                    | 복구 | `REJECTED`·`DELETED` → `PENDING` | 없음 |
+
+                    - 위 표에 없는 전이와 같은 상태로의 변경은 409다.
+                    - 복구는 검토 대기로만 돌아간다. 등록은 검토 후 승인으로만 이뤄진다.
+                    - 복구 시 이전 반려 사유와 삭제 사유는 지워진다.
+                    - 승인과 복구에 사유를 실어 보내도 저장되지 않는다.
+                    """
+    )
+    @SecurityRequirement(name = "accessTokenAuth")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "변경 성공"),
+            @ApiResponse(responseCode = "400", description = "상태 누락, 사유 255자 초과 (`GlobalErrorCode.VALIDATION_ERROR`) 또는 반려·삭제에 사유 없음 (`PlaceErrorCode.PLACE_STATUS_REASON_REQUIRED`)"),
+            @ApiResponse(responseCode = "401", description = "accessToken 누락, 위변조 또는 만료 (`GlobalErrorCode.INVALID_TOKEN`, `GlobalErrorCode.EXPIRED_TOKEN`)"),
+            @ApiResponse(responseCode = "403", description = "관리자가 아님 (`GlobalErrorCode.FORBIDDEN`)"),
+            @ApiResponse(responseCode = "404", description = "존재하지 않는 장소 (`PlaceErrorCode.PLACE_NOT_FOUND`)"),
+            @ApiResponse(responseCode = "409", description = "허용되지 않는 상태 전이 (`PlaceErrorCode.INVALID_PLACE_STATUS_TRANSITION`)"),
+    })
+    @PatchMapping("/{placeId}/status")
+    public CommonResponse<AdminPlaceStatusUpdateResponse> updatePlaceStatus(
+            @Parameter(description = "장소 ID") @PathVariable @Positive Long placeId,
+            @Valid @RequestBody AdminPlaceStatusUpdateRequest request,
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
+        return CommonResponse.success(
+                adminPlaceCommandService.updateStatus(principal.memberId(), placeId, request));
+    }
+
+    @Operation(
+            summary = "관리자 기존 장소 수정",
+            description = """
+                    APPROVED 또는 PENDING 상태인 장소의 태그·한 줄 설명·사진을 부분 수정한다.
+                    - 요청에서 생략한 필드는 기존 값을 유지한다.
+                    - `tagNames`는 수정 후 적용할 서로 다른 활성 태그 2개 전체를 보낸다.
+                    - `imageUrls`는 새로 추가할 사진이며, `deleteImageIds`는 삭제할 기존 사진 ID다.
+                    - 사진 삭제와 추가를 반영한 뒤 남은 사진 순서를 0부터 다시 정렬한다.
+                    """
+    )
+    @SecurityRequirement(name = "accessTokenAuth")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "수정 성공",
+                    content = @Content(schema = @Schema(ref = "#/components/schemas/CommonResponseAdminPlaceDetailResponse"))),
+            @ApiResponse(responseCode = "400", description = "요청값 검증 실패, 잘못된 사진 또는 이미지 URL"),
+            @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "403", description = "관리자 권한 없음"),
+            @ApiResponse(responseCode = "404", description = "장소 없음 (`PlaceErrorCode.PLACE_NOT_FOUND`)"),
+            @ApiResponse(responseCode = "409", description = "수정 불가능한 장소 상태 (`PlaceErrorCode.PLACE_NOT_EDITABLE`)")
+    })
+    @PatchMapping("/{placeId}")
+    public CommonResponse<AdminPlaceDetailResponse> updatePlace(
+            @Parameter(description = "장소 ID") @PathVariable @Positive Long placeId,
+            @Valid @RequestBody AdminPlaceUpdateRequest request,
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
+        return CommonResponse.success(
+                adminPlaceCommandService.updatePlace(principal.memberId(), placeId, request));
     }
 }

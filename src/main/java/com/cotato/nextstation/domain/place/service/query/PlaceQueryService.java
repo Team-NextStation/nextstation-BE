@@ -32,16 +32,16 @@ public class PlaceQueryService {
     private final PlaceReviewImageRepository placeReviewImageRepository;
     private final PlaceConverter placeConverter;
 
-    public PlaceDetailResponse getPlaceDetail(Long placeId) {
+    public PlaceDetailResponse getPlaceDetail(Long placeId, Long memberId) {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new CustomException(PlaceErrorCode.PLACE_NOT_FOUND));
 
-        long totalReviewCount = placeReviewRepository.countByPlaceId(placeId);
-
+        // 비로그인(memberId == null)이면 NOT_BLOCKED_BY_VIEWER 조건이 필터를 건너뛴다.
+        long totalReviewCount = placeReviewRepository.countByPlaceId(placeId, memberId);
 
         List<PlaceImage> placeImages = placeImageRepository.findByPlaceOrderBySortOrderAsc(place);
         List<PlaceReview> reviews = placeReviewRepository.findVisibleReviewsByPlaceId(
-                placeId, PageRequest.of(0, REVIEW_PREVIEW_SIZE)
+                placeId, memberId, PageRequest.of(0, REVIEW_PREVIEW_SIZE)
         );
 
         List<Long> reviewIds = reviews.stream().map(PlaceReview::getId).toList();

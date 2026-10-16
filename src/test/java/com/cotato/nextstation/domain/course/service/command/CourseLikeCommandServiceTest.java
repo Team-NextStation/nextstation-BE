@@ -250,7 +250,7 @@ class CourseLikeCommandServiceTest {
     @DisplayName("전체 취소는 화면에 안 불러온 좋아요까지 서버가 조회해 취소한다")
     void cancelAllLikes_success() {
         // given: 프론트가 첫 페이지 2개만 들고 있어도 서버는 5개 전부를 대상으로 삼는다
-        given(courseLikeRepository.findVisibleLikedCourseIds(1L)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
+        given(courseLikeRepository.findVisibleLikedCourseIds(1L, 1L)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
         given(courseLikeRepository.findLikedCourseIdsForUpdate(1L, List.of(1L, 2L, 3L, 4L, 5L)))
                 .willReturn(List.of(1L, 2L, 3L, 4L, 5L));
 
@@ -265,7 +265,7 @@ class CourseLikeCommandServiceTest {
     @DisplayName("전체 선택 후 해제한 코스는 취소 대상에서 빠진다")
     void cancelAllLikes_withExceptions() {
         // given: 전체 선택 뒤 2,4번을 해제한 경우
-        given(courseLikeRepository.findVisibleLikedCourseIds(1L)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
+        given(courseLikeRepository.findVisibleLikedCourseIds(1L, 1L)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
         given(courseLikeRepository.findLikedCourseIdsForUpdate(1L, List.of(1L, 3L, 5L)))
                 .willReturn(List.of(1L, 3L, 5L));
 
@@ -281,7 +281,7 @@ class CourseLikeCommandServiceTest {
     @DisplayName("취소할 좋아요가 없으면 예외가 발생한다")
     void cancelAllLikes_nothingToCancel() {
         // given
-        given(courseLikeRepository.findVisibleLikedCourseIds(1L)).willReturn(List.of());
+        given(courseLikeRepository.findVisibleLikedCourseIds(1L, 1L)).willReturn(List.of());
 
         // when & then
         assertThatThrownBy(() -> courseLikeCommandService.cancelAllLikes(1L, null))
@@ -294,7 +294,7 @@ class CourseLikeCommandServiceTest {
     @DisplayName("전체 선택 후 모두 해제하면 예외가 발생한다")
     void cancelAllLikes_allExcluded() {
         // given
-        given(courseLikeRepository.findVisibleLikedCourseIds(1L)).willReturn(List.of(1L, 2L));
+        given(courseLikeRepository.findVisibleLikedCourseIds(1L, 1L)).willReturn(List.of(1L, 2L));
 
         // when & then
         assertThatThrownBy(() -> courseLikeCommandService.cancelAllLikes(1L, List.of(1L, 2L)))

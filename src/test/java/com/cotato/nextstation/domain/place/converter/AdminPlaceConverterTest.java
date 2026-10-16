@@ -1,6 +1,7 @@
 package com.cotato.nextstation.domain.place.converter;
 
 import com.cotato.nextstation.domain.place.dto.response.AdminPlaceDetailResponse;
+import com.cotato.nextstation.domain.place.dto.response.AdminPlaceImageResponse;
 import com.cotato.nextstation.domain.place.enums.PlaceStatus;
 import com.cotato.nextstation.domain.place.repository.AdminPlaceRepository.AdminPlaceDetailView;
 import org.junit.jupiter.api.DisplayName;
@@ -37,11 +38,12 @@ class AdminPlaceConverterTest {
         given(place.getKakaoPlaceId()).willReturn("123456789");
 
         AdminPlaceDetailResponse response = adminPlaceConverter.toDetailResponse(
-                place, List.of("INDOOR"), List.of("image-url"));
+                place, List.of("INDOOR"), List.of(new AdminPlaceImageResponse(11L, "image-url")));
 
         assertThat(response.address()).isEqualTo("서울 용산구 남영동 72-1");
         assertThat(response.xCoordinate()).isEqualTo(126.972123);
         assertThat(response.yCoordinate()).isEqualTo(37.544321);
         assertThat(response.kakaoPlaceUrl()).isEqualTo("https://place.map.kakao.com/123456789");
+        assertThat(response.images()).containsExactly(new AdminPlaceImageResponse(11L, "image-url"));
     }
 }

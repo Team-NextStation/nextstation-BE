@@ -5,6 +5,7 @@ import com.cotato.nextstation.domain.course.entity.CoursePlace;
 import com.cotato.nextstation.domain.course.repository.CoursePlaceRepository;
 import com.cotato.nextstation.domain.course.service.command.CourseCommandService;
 import com.cotato.nextstation.domain.course.service.query.CourseQueryService;
+import com.cotato.nextstation.domain.block.repository.MemberBlockRepository;
 import com.cotato.nextstation.domain.journal.converter.JournalConverter;
 import com.cotato.nextstation.domain.journal.dto.response.JournalDetailResponse;
 import com.cotato.nextstation.domain.journal.dto.response.JournalWriteInfoResponse;
@@ -21,7 +22,7 @@ import com.cotato.nextstation.domain.journal.repository.JournalRepository;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.CourseSnapshotView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.MyJournalCardView;
 import com.cotato.nextstation.domain.journal.repository.JournalRepository.UncompletedCourseCardView;
-import com.cotato.nextstation.domain.place.dto.response.PlaceInfoResponse;
+import com.cotato.nextstation.domain.place.dto.response.HistoricalPlaceInfoResponse;
 import com.cotato.nextstation.domain.place.entity.PlaceReview;
 import com.cotato.nextstation.domain.place.entity.PlaceReviewImage;
 import com.cotato.nextstation.domain.place.repository.PlaceReviewImageRepository;
@@ -68,6 +69,7 @@ public class JournalQueryService {
     private final JournalImageRepository journalImageRepository;
     private final PlaceReviewRepository placeReviewRepository;
     private final PlaceReviewImageRepository placeReviewImageRepository;
+    private final MemberBlockRepository memberBlockRepository;
 
     private final JournalConverter journalConverter;
 
@@ -92,9 +94,9 @@ public class JournalQueryService {
                 .toList();
 
         // 5. placeIds → 장소 이름
-        Map<Long, PlaceInfoResponse> placeInfoMap = placeInfoQueryService.getPlaceInfos(placeIds)
+        Map<Long, HistoricalPlaceInfoResponse> placeInfoMap = placeInfoQueryService.getHistoricalPlaceInfos(placeIds)
                 .stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, Function.identity()));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, Function.identity()));
 
         // 6. placeIds → 태그 상위 3개
         List<String> tags = placeInfoQueryService.getTopTagNames(placeIds);
@@ -250,6 +252,12 @@ public class JournalQueryService {
             throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
         }
 
+        // 2-2. 작성자와 조회자 사이에 어느 방향으로든 차단 관계가 있으면 타인에게는 노출하지 않는다.
+        // 목록에서는 빠지지만 journalId를 직접 아는 경우 상세로 바로 들어올 수 있어 여기서도 방어한다.
+        if (!isOwner && memberBlockRepository.existsBetween(memberId, journal.getMember().getId())) {
+            throw new CustomException(JournalErrorCode.JOURNAL_NOT_FOUND);
+        }
+
         // 3. memberStampId → courseId
         Long courseId = memberStampQueryService.getCourseId(
                 journal.getMember().getId(), journal.getMemberStampId());
@@ -270,9 +278,9 @@ public class JournalQueryService {
                 .toList();
 
         // 7. placeIds → 장소 이름
-        Map<Long, PlaceInfoResponse> placeInfoMap = placeInfoQueryService.getPlaceInfos(placeIds)
+        Map<Long, HistoricalPlaceInfoResponse> placeInfoMap = placeInfoQueryService.getHistoricalPlaceInfos(placeIds)
                 .stream()
-                .collect(Collectors.toMap(PlaceInfoResponse::placeId, Function.identity()));
+                .collect(Collectors.toMap(HistoricalPlaceInfoResponse::placeId, Function.identity()));
 
         // 8. placeIds → 태그 상위 3개
         List<String> tags = placeInfoQueryService.getTopTagNames(placeIds);
@@ -283,8 +291,17 @@ public class JournalQueryService {
 
         // 10. journalId → 장소 리뷰 + 리뷰 이미지
         List<PlaceReview> placeReviews = placeReviewRepository.findByJournalId(journalId);
+        Map<Long, Long> placeIdByReviewId = placeReviewRepository.findReviewPlaceIdsByJournalId(journalId).stream()
+                .collect(Collectors.toMap(
+                        PlaceReviewRepository.ReviewPlaceView::getReviewId,
+                        PlaceReviewRepository.ReviewPlaceView::getPlaceId
+                ));
         Map<Long, PlaceReview> reviewByPlaceId = placeReviews.stream()
-                .collect(Collectors.toMap(pr -> pr.getPlace().getId(), Function.identity()));
+                .filter(review -> placeIdByReviewId.containsKey(review.getId()))
+                .collect(Collectors.toMap(
+                        review -> placeIdByReviewId.get(review.getId()),
+                        Function.identity()
+                ));
 
         List<Long> reviewIds = placeReviews.stream().map(PlaceReview::getId).toList();
         Map<Long, String> imageUrlByReviewId = placeReviewImageRepository

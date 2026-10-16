@@ -12,10 +12,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // 허용목록 검증은 인가코드 유출과 직결되므로, 카카오로 요청이 나가기 전에 막히는 경로만 검증한다.
 class KakaoOAuthClientTest {
 
+    private static final String ADMIN_KEY = "admin-key";
     private static final String ALLOWED_URI = "https://app.example.com/auth/kakao/callback";
 
     private KakaoOAuthClient client() {
-        return new KakaoOAuthClient("client-id", "", List.of(ALLOWED_URI));
+        return new KakaoOAuthClient("client-id", "", List.of(ALLOWED_URI), ADMIN_KEY);
     }
 
     @Test
@@ -37,7 +38,7 @@ class KakaoOAuthClientTest {
     @Test
     @DisplayName("redirect-uris 설정이 비어 있으면 생성 시점에 실패한다")
     void constructor_emptyRedirectUris() {
-        assertThatThrownBy(() -> new KakaoOAuthClient("client-id", "", List.of()))
+        assertThatThrownBy(() -> new KakaoOAuthClient("client-id", "", List.of(), ADMIN_KEY))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

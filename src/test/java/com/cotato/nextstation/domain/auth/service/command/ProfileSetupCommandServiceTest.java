@@ -280,4 +280,23 @@ class ProfileSetupCommandServiceTest {
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(NicknameErrorCode.DUPLICATE_NICKNAME.getMessage());
     }
+
+    @Test
+    @DisplayName("생년월일 없이 요청해도 프로필이 설정된다")
+    void setupProfile_withoutBirthDate() {
+        // given
+        givenValidToken();
+        Member member = pendingMember();
+        given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(member));
+        given(memberRepository.activateIfPending(MEMBER_ID)).willReturn(1);
+        given(authTokenIssuer.issue(MEMBER_ID)).willReturn(new IssuedTokens(ACCESS_TOKEN, REFRESH_TOKEN));
+
+        // when
+        ProfileSetupResult result = profileSetupCommandService.setupProfile(
+                AUTH_HEADER, NICKNAME, null, GENDER, null);
+
+        // then
+        assertThat(result.status()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(member.getBirthDate()).isNull();
+    }
 }

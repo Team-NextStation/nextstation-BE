@@ -14,8 +14,19 @@ public interface PlaceImageRepository extends JpaRepository<PlaceImage, Long> {
 
     List<PlaceImage> findByPlaceIdIn(List<Long> placeIds);
 
+    // S3 원본 삭제 전 참조 확인용. 같은 URL을 여러 장소가 공유할 수 있다.
+    boolean existsByImageUrl(String imageUrl);
+
     @Query(value = """
-            SELECT pi.place_id AS placeId, pi.image_url AS imageUrl
+            SELECT *
+            FROM place_image
+            WHERE place_id = :placeId
+            ORDER BY sort_order, id
+            """, nativeQuery = true)
+    List<PlaceImage> findAdminImagesByPlaceId(@Param("placeId") Long placeId);
+
+    @Query(value = """
+            SELECT pi.id AS imageId, pi.place_id AS placeId, pi.image_url AS imageUrl
             FROM place_image pi
             WHERE pi.place_id IN (:placeIds)
             ORDER BY pi.place_id, pi.sort_order, pi.id
@@ -23,6 +34,7 @@ public interface PlaceImageRepository extends JpaRepository<PlaceImage, Long> {
     List<AdminPlaceImageView> findAdminImages(@Param("placeIds") List<Long> placeIds);
 
     interface AdminPlaceImageView {
+        Long getImageId();
         Long getPlaceId();
         String getImageUrl();
     }

@@ -47,6 +47,7 @@ app:
 
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
+  admin-key: ${KAKAO_ADMIN_KEY:}
   oauth:
     client-id: ${KAKAO_OAUTH_CLIENT_ID}
     client-secret: ${KAKAO_OAUTH_CLIENT_SECRET}
@@ -62,7 +63,21 @@ apple:
     web-redirect-uri: ${APPLE_OAUTH_WEB_REDIRECT_URI:}
     # 콜백 처리 후 최종적으로 사용자를 돌려보낼 프론트엔드 주소
     web-frontend-redirect-uri: ${APPLE_OAUTH_WEB_FRONTEND_REDIRECT_URI:}
+    # revoke/refresh_token 교환용 client_secret(ES256 JWT) 서명에 쓴다 - Apple Account Holder가 발급
+    team-id: ${APPLE_OAUTH_TEAM_ID:}
+    key-id: ${APPLE_OAUTH_KEY_ID:}
+    private-key: ${APPLE_OAUTH_PRIVATE_KEY:}
+
+security:
+  oauth-credential:
+    secret: ${OAUTH_CREDENTIAL_SECRET:}
+    salt: ${OAUTH_CREDENTIAL_SALT:}
 
 aws:
   s3:
     bucket-name: ${AWS_S3_BUCKET_NAME:}
+
+# 웹훅 URL을 비워두면 전송을 건너뛴다.
+moderation:
+  discord:
+    webhook-url: ${DISCORD_MODERATION_WEBHOOK_URL:}

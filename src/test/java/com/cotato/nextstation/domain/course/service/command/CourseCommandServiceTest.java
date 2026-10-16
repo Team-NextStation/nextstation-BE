@@ -12,6 +12,7 @@ import com.cotato.nextstation.domain.course.repository.CourseRepository;
 import com.cotato.nextstation.domain.station.entity.Station;
 import com.cotato.nextstation.domain.station.repository.StationRepository;
 import com.cotato.nextstation.global.exception.CustomException;
+import com.cotato.nextstation.global.util.ProfanityFilter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,9 @@ class CourseCommandServiceTest {
 
     @Mock
     private StationRepository stationRepository;
+
+    @Mock
+    private ProfanityFilter profanityFilter;
 
     private Course course(String name) {
         return Course.builder().memberId(1L).stationId(100L).name(name).build();

@@ -83,9 +83,9 @@ class PlaceReviewQueryServiceTest {
         PlaceReview review2 = mockReview(502L, 20L, LocalDateTime.now());
         List<PlaceReview> reviews = List.of(review1, review2);
 
-        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any(), any()))
                 .willReturn(reviews);
-        given(placeReviewRepository.countByPlaceId(placeId)).willReturn(24L);
+        given(placeReviewRepository.countByPlaceId(placeId, 1L)).willReturn(24L);
         given(placeReviewLikeRepository.findLikedReviewIdsByMemberId(any(), anyList()))
                 .willReturn(List.of());
         given(placeReviewConverter.resolveImagesByReviewId(reviews))
@@ -100,9 +100,9 @@ class PlaceReviewQueryServiceTest {
 
         // then
         assertThat(result).isEqualTo(expected);
-        verify(placeReviewRepository).findByPlaceIdOrderByRecommend(eq(placeId), any());
-        verify(placeReviewRepository).countByPlaceId(placeId);
-        verify(placeReviewRepository, never()).findByPlaceIdOrderByRecommendAfterCursor(any(), anyLong(), any(), any());
+        verify(placeReviewRepository).findByPlaceIdOrderByRecommend(eq(placeId), any(), any());
+        verify(placeReviewRepository).countByPlaceId(placeId, 1L);
+        verify(placeReviewRepository, never()).findByPlaceIdOrderByRecommendAfterCursor(any(), anyLong(), any(), any(), any());
     }
 
     @Test
@@ -117,7 +117,7 @@ class PlaceReviewQueryServiceTest {
 
         List<PlaceReview> reviews = List.of(mockReview(502L, 20L, LocalDateTime.now()));
 
-        given(placeReviewRepository.findByPlaceIdOrderByRecommendAfterCursor(eq(placeId), eq(30L), eq(501L), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByRecommendAfterCursor(eq(placeId), eq(30L), eq(501L), any(), any()))
                 .willReturn(reviews);
         given(placeReviewLikeRepository.findLikedReviewIdsByMemberId(any(), anyList()))
                 .willReturn(List.of());
@@ -131,9 +131,9 @@ class PlaceReviewQueryServiceTest {
 
         // then
         assertThat(result.totalCount()).isNull();
-        verify(placeReviewRepository, never()).countByPlaceId(any());
-        verify(placeReviewRepository).findByPlaceIdOrderByRecommendAfterCursor(eq(placeId), eq(30L), eq(501L), any());
-        verify(placeReviewRepository, never()).findByPlaceIdOrderByRecommend(any(), any());
+        verify(placeReviewRepository, never()).countByPlaceId(any(), any());
+        verify(placeReviewRepository).findByPlaceIdOrderByRecommendAfterCursor(eq(placeId), eq(30L), eq(501L), any(), any());
+        verify(placeReviewRepository, never()).findByPlaceIdOrderByRecommend(any(), any(), any());
     }
 
     @Test
@@ -149,9 +149,9 @@ class PlaceReviewQueryServiceTest {
         PlaceReview review3 = mockReview(503L, 10L, LocalDateTime.now());
         List<PlaceReview> reviews = List.of(review1, review2, review3);
 
-        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any(), any()))
                 .willReturn(reviews);
-        given(placeReviewRepository.countByPlaceId(placeId)).willReturn(3L);
+        given(placeReviewRepository.countByPlaceId(placeId, 1L)).willReturn(3L);
         given(placeReviewLikeRepository.findLikedReviewIdsByMemberId(any(), anyList()))
                 .willReturn(List.of());
         given(placeReviewConverter.resolveImagesByReviewId(anyList()))
@@ -178,9 +178,9 @@ class PlaceReviewQueryServiceTest {
         PlaceReview review1 = mockReview(501L, 30L, LocalDateTime.now());
         List<PlaceReview> reviews = List.of(review1);
 
-        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any(), any()))
                 .willReturn(reviews);
-        given(placeReviewRepository.countByPlaceId(placeId)).willReturn(1L);
+        given(placeReviewRepository.countByPlaceId(placeId, 1L)).willReturn(1L);
         given(placeReviewLikeRepository.findLikedReviewIdsByMemberId(any(), anyList()))
                 .willReturn(List.of());
         given(placeReviewConverter.resolveImagesByReviewId(reviews))
@@ -205,9 +205,9 @@ class PlaceReviewQueryServiceTest {
 
         List<PlaceReview> reviews = List.of(mockReview(501L, 30L, LocalDateTime.now()));
 
-        given(placeReviewRepository.findByPlaceIdOrderByLatest(eq(placeId), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByLatest(eq(placeId), any(), any()))
                 .willReturn(reviews);
-        given(placeReviewRepository.countByPlaceId(placeId)).willReturn(1L);
+        given(placeReviewRepository.countByPlaceId(placeId, 1L)).willReturn(1L);
         given(placeReviewLikeRepository.findLikedReviewIdsByMemberId(any(), anyList()))
                 .willReturn(List.of());
         given(placeReviewConverter.resolveImagesByReviewId(reviews))
@@ -219,7 +219,7 @@ class PlaceReviewQueryServiceTest {
         placeReviewQueryService.getReviews(placeId, PlaceReviewSortType.LATEST, null, 10, 1L);
 
         // then
-        verify(placeReviewRepository).findByPlaceIdOrderByLatest(eq(placeId), any());
+        verify(placeReviewRepository).findByPlaceIdOrderByLatest(eq(placeId), any(), any());
     }
 
     @Test
@@ -235,7 +235,7 @@ class PlaceReviewQueryServiceTest {
 
         List<PlaceReview> reviews = List.of(mockReview(502L, 10L, LocalDateTime.now()));
 
-        given(placeReviewRepository.findByPlaceIdOrderByLatestAfterCursor(eq(placeId), eq(cursorCreatedAt), eq(501L), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByLatestAfterCursor(eq(placeId), eq(cursorCreatedAt), eq(501L), any(), any()))
                 .willReturn(reviews);
         given(placeReviewLikeRepository.findLikedReviewIdsByMemberId(any(), anyList()))
                 .willReturn(List.of());
@@ -248,8 +248,8 @@ class PlaceReviewQueryServiceTest {
         placeReviewQueryService.getReviews(placeId, PlaceReviewSortType.LATEST, cursor, 10, 1L);
 
         // then
-        verify(placeReviewRepository).findByPlaceIdOrderByLatestAfterCursor(eq(placeId), eq(cursorCreatedAt), eq(501L), any());
-        verify(placeReviewRepository, never()).findByPlaceIdOrderByLatest(any(), any());
+        verify(placeReviewRepository).findByPlaceIdOrderByLatestAfterCursor(eq(placeId), eq(cursorCreatedAt), eq(501L), any(), any());
+        verify(placeReviewRepository, never()).findByPlaceIdOrderByLatest(any(), any(), any());
     }
 
     @Test
@@ -261,9 +261,9 @@ class PlaceReviewQueryServiceTest {
 
         List<PlaceReview> reviews = List.of(mockReview(501L, 30L, LocalDateTime.now()));
 
-        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any()))
+        given(placeReviewRepository.findByPlaceIdOrderByRecommend(eq(placeId), any(), any()))
                 .willReturn(reviews);
-        given(placeReviewRepository.countByPlaceId(placeId)).willReturn(1L);
+        given(placeReviewRepository.countByPlaceId(placeId, null)).willReturn(1L);
         given(placeReviewConverter.resolveImagesByReviewId(reviews))
                 .willReturn(Map.of());
         given(placeReviewConverter.toListResponse(any(), eq(reviews), any(), eq(Set.of()), any(), eq(false)))

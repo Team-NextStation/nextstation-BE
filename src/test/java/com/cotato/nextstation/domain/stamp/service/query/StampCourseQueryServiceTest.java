@@ -57,13 +57,13 @@ class StampCourseQueryServiceTest {
 
         given(stationRepository.findById(stationId)).willReturn(Optional.of(station));
         given(stationLineRepository.findFirstByStation(station)).willReturn(Optional.empty());
-        given(courseQueryService.getPopularCoursesByStation(eq(stationId), eq(3))).willReturn(courses);
+        given(courseQueryService.getPopularCoursesByStation(eq(stationId), eq(3), eq(1L))).willReturn(courses);
 
         given(stampCourseConverter.toStationPopularCoursesResponse(eq(station), any(), eq(courses)))
                 .willReturn(expected);
 
         // when
-        StationPopularCoursesResponse result = stampCourseQueryService.getPopularCoursesByStation(stationId);
+        StationPopularCoursesResponse result = stampCourseQueryService.getPopularCoursesByStation(1L, stationId);
 
         // then
         assertThat(result).isEqualTo(expected);
@@ -77,7 +77,7 @@ class StampCourseQueryServiceTest {
         given(stationRepository.findById(stationId)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> stampCourseQueryService.getPopularCoursesByStation(stationId))
+        assertThatThrownBy(() -> stampCourseQueryService.getPopularCoursesByStation(1L, stationId))
                 .isInstanceOf(CustomException.class)
                 .hasMessageContaining(StampErrorCode.STATION_NOT_FOUND.getMessage());
     }
@@ -93,12 +93,12 @@ class StampCourseQueryServiceTest {
         StationPopularCoursesResponse expected = new StationPopularCoursesResponse("보문역", null, List.of());
         given(stationRepository.findById(stationId)).willReturn(Optional.of(station));
         given(stationLineRepository.findFirstByStation(station)).willReturn(Optional.empty());
-        given(courseQueryService.getPopularCoursesByStation(eq(stationId), eq(3))).willReturn(List.of());
+        given(courseQueryService.getPopularCoursesByStation(eq(stationId), eq(3), eq(1L))).willReturn(List.of());
         given(stampCourseConverter.toStationPopularCoursesResponse(eq(station), any(), eq(List.of())))
                 .willReturn(expected);
 
         // when
-        StationPopularCoursesResponse result = stampCourseQueryService.getPopularCoursesByStation(stationId);
+        StationPopularCoursesResponse result = stampCourseQueryService.getPopularCoursesByStation(1L, stationId);
 
         // then
         assertThat(result.courses()).isEmpty();
