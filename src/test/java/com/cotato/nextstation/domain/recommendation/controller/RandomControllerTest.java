@@ -6,6 +6,7 @@ import com.cotato.nextstation.domain.recommendation.dto.response.RandomRecommend
 import com.cotato.nextstation.domain.recommendation.dto.response.RecommendedStationResponse;
 import com.cotato.nextstation.domain.recommendation.exception.RecommendationErrorCode;
 import com.cotato.nextstation.domain.recommendation.service.command.RecommendationCommandService;
+import com.cotato.nextstation.global.config.SecurityConfig;
 import com.cotato.nextstation.global.exception.CustomException;
 import com.cotato.nextstation.global.exception.GlobalExceptionHandler;
 import com.cotato.nextstation.global.jwt.JwtProvider;
@@ -18,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -38,8 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(RandomController.class)
-@AutoConfigureMockMvc(addFilters = false)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class RandomControllerTest {
 
     private static final String TOKEN = "access-token";
