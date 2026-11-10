@@ -33,14 +33,22 @@ public class RandomDrawRequestLoggingFilter extends OncePerRequestFilter {
 
         try {
             chain.doFilter(request, response);
-        } catch (ServletException | IOException | RuntimeException ex) {
-            log.warn("랜덤뽑기 요청 중단 - requestId={}, exception={}, elapsedMs={}",
-                    requestId, ex.getClass().getSimpleName(), elapsedMillis(startedAt));
+        } catch (IOException ex) {
+            log.warn("랜덤뽑기 요청 처리 종료 - requestId={}, outcome=aborted, status={}, elapsedMs={}, exception={}",
+                    requestId, statusOnFailure(response), elapsedMillis(startedAt), ex.getClass().getSimpleName());
+            throw ex;
+        } catch (ServletException | RuntimeException ex) {
+            log.error("랜덤뽑기 요청 처리 종료 - requestId={}, outcome=failed, status={}, elapsedMs={}",
+                    requestId, statusOnFailure(response), elapsedMillis(startedAt), ex);
             throw ex;
         }
 
         log.info("랜덤뽑기 요청 처리 종료 - requestId={}, status={}, elapsedMs={}",
                 requestId, response.getStatus(), elapsedMillis(startedAt));
+    }
+
+    private String statusOnFailure(HttpServletResponse response) {
+        return response.isCommitted() ? Integer.toString(response.getStatus()) : "unresolved";
     }
 
     private long elapsedMillis(long startedAt) {
