@@ -72,7 +72,12 @@ public class RecommendationCommandService {
         List<StationLineView> lines = stationLineRepository.findLinesByStationIdIn(List.of(picked.getId()));
         List<StationPlaceView> previewPlaces = selectOnePerCategory(stationPlaceReader.getPlacesByStation(picked.getId()));
         String courseName = picked.getStationName() + COURSE_NAME_SUFFIX;
-        return recommendationConverter.toRandomResponse(picked, lines, courseName, previewPlaces);
+        RandomRecommendationResponse response =
+                recommendationConverter.toRandomResponse(picked, lines, courseName, previewPlaces);
+        log.info("랜덤추천 완료 - status=200, stationId={}, stationName={}, courseName={}, placeIds={}",
+                picked.getId(), picked.getStationName(), courseName,
+                previewPlaces.stream().map(StationPlaceView::placeId).toList());
+        return response;
     }
 
     // 코스만 다시 뽑기. 역은 고정하고 코스 미리보기만 완전 무작위로 다시 구성한다.
@@ -219,7 +224,9 @@ public class RecommendationCommandService {
     private Station pickDrawableStation(String recommendationSessionId, LocalDateTime activeSince) {
         List<Station> drawables = stationRepository.findByIsDrawableTrue();
         if (drawables.isEmpty()) {
-            throw new CustomException(RecommendationErrorCode.NO_DRAWABLE_STATION);
+            RecommendationErrorCode errorCode = RecommendationErrorCode.NO_DRAWABLE_STATION;
+            log.warn("랜덤추천 실패 - status={}, code={}", errorCode.getHttpStatus().value(), errorCode.getCode());
+            throw new CustomException(errorCode);
         }
         Set<Long> recommendedStationIds = Set.copyOf(
                 recommendationLogRepository.findRandomRecommendedStationIds(recommendationSessionId, activeSince));
